@@ -82,3 +82,34 @@ async def upload_document(
         raise HTTPException(status_code=500, detail="Internal server error during document upload")
     finally:
         await file.close()
+
+
+@router.delete("/{document_id}", status_code=204)
+async def delete_document(
+    document_id: str,
+    db: Session = Depends(get_db),
+    storage: MinioStorage = Depends(get_storage),
+):
+    """Delete a document, its versions, chunks, and stored files."""
+    from uuid import UUID
+    from app.infrastructure.db.models.document import Document
+
+    try:
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid document UUID")
+
+    doc = db.query(Document).filter(Document.id == doc_uuid).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    for version in doc.versions:
+        if version.storage_key:
+            try:
+                storage.delete_object(version.storage_key)
+            except Exception:
+                pass
+
+    db.delete(doc)
+    db.commit()
+    return None
