@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>دستیار گفتگوی حقوقی هوشمند | Law Copilot</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <!-- Marked.js for rich markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="/" class="brand-link">
+        <div class="brand-logo-icon">⚖️</div>
+        <span>سامانه هوشمند حقوقی Law Copilot</span>
+      </a>
+      <ul class="nav-links">
+        <li class="nav-item"><a href="/">صفحه اصلی</a></li>
+        <li class="nav-item"><a href="/upload.html">بارگذاری و پردازش پایگاه دانش</a></li>
+        <li class="nav-item active"><a href="/chat.html">دستیار گفتگو حقوقی</a></li>
+      </ul>
+      <div class="system-status-badge">
+        <span class="status-dot"></span>
+        <span>عامل حقوقی آماده گفتگو</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Chat Layout -->
+  <main class="main-wrapper" style="margin-top: 1rem; margin-bottom: 1rem;">
+    <div class="chat-layout">
+      
+      <!-- Sidebar Settings & Suggestions -->
+      <aside class="chat-sidebar">
+        <div>
+          <h2 style="font-size: 1.05rem; color: var(--primary-900); display: flex; align-items: center; gap: 0.4rem; margin-bottom: 0.75rem;">
+            <span>⚙️</span>
+            <span>تنظیمات جستجو و بازیابی</span>
+          </h2>
+          
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label class="form-label" for="filterKnowledgeType">کانال دانش (Knowledge Type):</label>
+            <select id="filterKnowledgeType" class="form-select" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+              <option value="">همه منابع (ترکیبی)</option>
+              <option value="factual">فقط مواد قانونی و احکام (Factual)</option>
+              <option value="stylistic">فقط الگوها و فرمت‌های نگارش (Stylistic)</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label class="form-label" for="filterDocType">نوع سند:</label>
+            <select id="filterDocType" class="form-select" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+              <option value="">همه انواع اسناد</option>
+              <option value="law">قانون مصوب</option>
+              <option value="court_verdict">آرای قضایی / وحدت رویه</option>
+              <option value="regulation">آیین‌نامه‌ها</option>
+              <option value="contract">قراردادها</option>
+            </select>
+          </div>
+
+          <div class="form-group" style="margin-bottom: 0.85rem;">
+            <label class="form-label" for="topKInput">حداکثر شواهد بازیابی (top_k):</label>
+            <input type="number" id="topKInput" class="form-control" min="1" max="15" value="5" style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+          </div>
+
+          <div style="margin-bottom: 0.85rem; display: flex; align-items: center; gap: 0.5rem; background: var(--surface-bg); padding: 0.6rem; border-radius: var(--radius-md); border: 1px solid var(--surface-border);">
+            <input type="checkbox" id="enableExternalSearch" style="width: 16px; height: 16px; cursor: pointer;">
+            <label for="enableExternalSearch" style="font-size: 0.82rem; cursor: pointer; user-select: none;">
+              جستجوی وب در صورت عدم کفایت مستندات
+            </label>
+          </div>
+
+          <button type="button" id="newChatBtn" class="btn btn-outline" style="width: 100%; font-size: 0.85rem; padding: 0.5rem;">
+            <span>🔄 شروع گفتگوی جدید</span>
+          </button>
+        </div>
+
+        <!-- Sample Legal Queries -->
+        <div style="border-top: 1px solid var(--surface-border); padding-top: 1rem;">
+          <h3 style="font-size: 0.92rem; color: var(--primary-900); margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.35rem;">
+            <span>💡</span>
+            <span>پرسش‌های نمونه حقوقی:</span>
+          </h3>
+          <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+            <button type="button" class="prompt-chip sample-query" data-query="شرایط اساسی صحت معاملات بر اساس ماده ۱۹۰ قانون مدنی چیست؟" style="text-align: right; width: 100%;">
+              ⚖️ شرایط صحت معاملات (ماده ۱۹۰ قانون مدنی)
+            </button>
+            <button type="button" class="prompt-chip sample-query" data-query="آثار حقوقی و ضمانت اجرای عدم انجام تعهد در قراردادها چیست؟" style="text-align: right; width: 100%;">
+              ⚖️ آثار عدم انجام تعهد در قراردادها
+            </button>
+            <button type="button" class="prompt-chip sample-query" data-query="تفاوت خیار عیب با خیار غبن و مهلت اعمال هر کدام چگونه است؟" style="text-align: right; width: 100%;">
+              ⚖️ تفاوت خیار عیب و خیار غبن
+            </button>
+            <button type="button" class="prompt-chip sample-query" data-query="نحوه تنظیم دادخواست مطالبه وجه سفته و خسارت تاخیر تادیه" style="text-align: right; width: 100%;">
+              ⚖️ مطالبه وجه سفته و خسارت تاخیر تادیه
+            </button>
+          </div>
+        </div>
+
+        <!-- Legal Disclaimer -->
+        <div style="margin-top: auto; font-size: 0.75rem; color: var(--text-muted); background-color: var(--surface-bg); padding: 0.75rem; border-radius: var(--radius-sm); border: 1px solid var(--surface-border); line-height: 1.5;">
+          ℹ️ <strong>سلب مسئولیت:</strong> پاسخ‌های این سامانه توسط هوش مصنوعی بر اساس مستندات حقوقی بارگذاری شده تدوین می‌شود و به عنوان مشاوره حقوقی رسمی وکیل دادگستری تلقی نمی‌گردد.
+        </div>
+      </aside>
+
+      <!-- Main Chat Container -->
+      <section class="chat-main">
+        <!-- Chat Header -->
+        <div class="chat-header">
+          <div>
+            <h1 style="font-size: 1.15rem; margin-bottom: 0.2rem; display: flex; align-items: center; gap: 0.5rem;">
+              <span>⚖️</span>
+              <span>گفتگوی حقوقی با دستیار هوشمند</span>
+            </h1>
+            <span style="font-size: 0.8rem; color: var(--text-muted);">تحلیل استنادی مواد قانون، استخراج شواهد و پاسخگویی مستند</span>
+          </div>
+          <div style="display: flex; gap: 0.5rem; align-items: center;">
+            <span class="badge badge-gold" id="currentIntentBadge" style="display: none;"></span>
+            <span class="badge badge-primary">LangGraph Multi-Agent RAG</span>
+          </div>
+        </div>
+
+        <!-- Messages Feed -->
+        <div class="chat-messages" id="chatMessages">
+          <!-- Initial Welcome Message -->
+          <div class="message-bubble assistant">
+            <div class="bubble-meta">
+              <span>🤖 دستیار هوشمند حقوقی</span>
+              <span>•</span>
+              <span>هم‌اکنون</span>
+            </div>
+            <div class="bubble-body">
+              <p style="margin-bottom: 0.5rem;"><strong>درود بر شما؛</strong></p>
+              <p>من دستیار هوشمند حقوقی Law Copilot هستم. آماده‌ام به پرسش‌های شما بر اساس قوانین، آیین‌نامه‌ها، احکام قضایی و قراردادهای بارگذاری‌شده در پایگاه دانش پاسخ دهم.</p>
+              <p style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">
+                تمامی پاسخ‌های من با ذکر دقیق مستندات، مواد قانونی و ارزیابی شواهد ارائه می‌شود. سوال خود را مطرح کنید یا یکی از پرسش‌های پیشنهادی ستون کنار را انتخاب فرمایید.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Typing Indicator (Hidden by default) -->
+        <div id="typingIndicator" style="display: none; padding: 0.75rem 1.5rem; font-size: 0.85rem; color: var(--primary-700); background-color: var(--primary-50); border-top: 1px dashed var(--primary-100);">
+          <div style="display: flex; align-items: center; gap: 0.6rem;">
+            <span class="status-dot"></span>
+            <span>دستیار در حال بازیابی مواد قانونی، اعتبارسنجی شواهد و تدوین پاسخ است...</span>
+          </div>
+        </div>
+
+        <!-- Input Bar -->
+        <div class="chat-input-area">
+          <form id="chatForm">
+            <div class="chat-input-wrapper">
+              <textarea 
+                id="queryInput" 
+                class="chat-textarea" 
+                placeholder="سوال حقوقی خود را اینجا بنویسید (مثال: شرایط فسخ معامله در صورت تاخیر ثمن چیست؟)..." 
+                rows="1" 
+                required
+              ></textarea>
+              <button type="submit" id="sendBtn" class="btn btn-primary" style="height: 48px; min-width: 90px;">
+                <span>ارسال</span>
+                <span>➤</span>
+              </button>
+            </div>
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.4rem; font-size: 0.75rem; color: var(--text-muted);">
+              <span>راهنما: کلید Enter برای ارسال، Shift + Enter برای خط جدید</span>
+              <span id="charCountNotice"></span>
+            </div>
+          </form>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <footer class="footer">
+    سامانه هوشمند حقوقی Law Copilot | واسط چت و استدلال حقوقی هوشمند
+  </footer>
+
+  <script src="/js/chat.js"></script>
+</body>
+</html>
