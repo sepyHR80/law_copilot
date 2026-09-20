@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: law-copilot-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: law-copilot-db
+          property: connectionString
+
+databases:
+  - name: law-copilot-db
+    databaseName: law_copilot
+    user: law_copilot
+    plan: free
+    region: oregon
+    postgresMajorVersion: "16"
