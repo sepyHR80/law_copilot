@@ -1,33 +1,32 @@
+# Multi-stage / lightweight Python 3.12 container for Law Copilot
 FROM python:3.12-slim
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
-
-# Install uv for fast dependency management
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+# Prevent Python from writing .pyc files and enable unbuffered stdout/stderr
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
 WORKDIR /app
 
-# Copy dependency specifications
-COPY pyproject.toml uv.lock .python-version ./
+# Install minimal system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
-# Install project dependencies
-RUN uv sync --frozen --no-dev
+# Install Python dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code
-COPY app/ ./app/
-COPY migrations/ ./migrations/
-COPY alembic.ini ./alembic.ini
-COPY README.md ./README.md
+# Copy codebase and frontend assets
+COPY . .
 
-# Place virtualenv on PATH
-ENV PATH="/app/.venv/bin:$PATH"
-ENV PORT=10000
+# Expose default port (Render will override with $PORT dynamically)
+EXPOSE 8000
 
-EXPOSE 10000
+# Health check
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:${PORT:-8000}/healthz || exit 1
 
-# Run migrations and start FastAPI with uvicorn
-CMD sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-10000}"
+# Start server with dynamic port support for Render / Cloud Run / Docker
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]

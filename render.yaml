@@ -1,22 +1,27 @@
 services:
   - type: web
-    name: law-copilot-api
-    runtime: docker
+    name: law-copilot
+    runtime: python
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "uvicorn app.main:app --host 0.0.0.0 --port $PORT"
     plan: free
-    region: oregon
-    dockerfilePath: ./Dockerfile
     envVars:
-      - key: ENVIRONMENT
+      - key: PYTHON_VERSION
+        value: 3.12.0
+      - key: APP_ENV
         value: production
-      - key: DATABASE_URL
-        fromDatabase:
-          name: law-copilot-db
-          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: EMBEDDING_API_KEY
+        sync: false
+      - key: MINIO_ENDPOINT
+        value: ""
+      - key: MINIO_BUCKET_DOCUMENTS
+        value: "law-copilot-documents"
 
 databases:
   - name: law-copilot-db
     databaseName: law_copilot
-    user: law_copilot
+    user: postgres
     plan: free
-    region: oregon
     postgresMajorVersion: "16"
