@@ -21,8 +21,36 @@ class _DraftAnswerSchema(BaseModel):
     citations: List[Dict[str, Any]] = Field(default_factory=list)
 
 
+def create_load_memory_node(memory_service: Optional[Any] = None):
+    """Create node loading scoped user preferences and case context."""
+
+    async def load_memory(state: AgentState) -> Dict[str, Any]:
+        user_id_str = state.get("user_id")
+        memory_context = ""
+
+        if user_id_str and memory_service is not None:
+            try:
+                from uuid import UUID
+
+                uid = UUID(str(user_id_str))
+                memory_context = memory_service.build_scoped_context(uid)
+            except Exception:
+                memory_context = ""
+
+        return {
+            "memory_context": memory_context,
+            "trace_metadata": {
+                **state.get("trace_metadata", {}),
+                "memory_loaded": bool(memory_context),
+            },
+        }
+
+    return load_memory
+
+
 def create_analyze_intent_node():
     """Create node that classifies user intent."""
+
 
     async def analyze_intent(state: AgentState) -> Dict[str, Any]:
         query = state.get("query", "").strip()
@@ -190,6 +218,9 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
         user_template = user_file.read_text(encoding="utf-8").strip() if user_file.is_file() else "{question}\n{evidence_block}"
 
         prompt = user_template.format(question=query, evidence_block=context_text)
+        memory_ctx = state.get("memory_context")
+        if memory_ctx:
+            prompt = f"{memory_ctx}\n\n{prompt}"
 
         try:
             parsed, _ = await llm_service.structured_complete(

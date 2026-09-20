@@ -1,7 +1,7 @@
 """LangGraph legal agent assembly and orchestrator."""
 
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from langgraph.graph import END, START, StateGraph
 
 from app.agent.edges import route_evidence, route_intent, route_verification
@@ -13,6 +13,7 @@ from app.agent.nodes import (
     create_generate_draft_node,
     create_handle_general_node,
     create_handle_insufficient_node,
+    create_load_memory_node,
     create_prepare_query_node,
     create_repair_draft_node,
     create_retrieve_knowledge_node,
@@ -25,12 +26,15 @@ from app.llm.service import LLMService
 from app.rag.context_builder import ContextBuilder
 
 
+
 def build_legal_agent_graph(
     hybrid_retriever: HybridRetrieverProtocol,
     reranker: Optional[RerankerProtocol] = None,
     llm_service: Optional[LLMService] = None,
     context_builder: Optional[ContextBuilder] = None,
+    memory_service: Optional[Any] = None,
     prompts_dir: Optional[Path] = None,
+    checkpointer: Optional[Any] = None,
 ):
     """Construct and compile the constrained LangGraph state machine.
 
@@ -44,6 +48,7 @@ def build_legal_agent_graph(
     workflow = StateGraph(AgentState)
 
     # Register nodes
+    workflow.add_node("load_memory", create_load_memory_node(memory_service))
     workflow.add_node("analyze_intent", create_analyze_intent_node())
     workflow.add_node("handle_general", create_handle_general_node())
     workflow.add_node("prepare_query", create_prepare_query_node())
@@ -62,7 +67,8 @@ def build_legal_agent_graph(
     workflow.add_node("repair_draft", create_repair_draft_node(llm_service))
 
     # Add transitions
-    workflow.add_edge(START, "analyze_intent")
+    workflow.add_edge(START, "load_memory")
+    workflow.add_edge("load_memory", "analyze_intent")
 
     workflow.add_conditional_edges(
         "analyze_intent",
@@ -101,7 +107,8 @@ def build_legal_agent_graph(
 
     workflow.add_edge("repair_draft", "verify_answer")
 
-    return workflow.compile()
+    return workflow.compile(checkpointer=checkpointer)
+
 
 
 class LegalAgent:
@@ -123,7 +130,11 @@ class LegalAgent:
             "trace_metadata": {},
         }
 
-        final_state = await self.graph.ainvoke(initial_state)
+        config = {}
+        if request.conversation_id:
+            config["configurable"] = {"thread_id": str(request.conversation_id)}
+
+        final_state = await self.graph.ainvoke(initial_state, config=config if config else None)
 
         return AgentResponse(
             query=request.query,
