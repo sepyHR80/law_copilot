@@ -28,5 +28,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
     CMD curl -f http://localhost:${PORT:-8000}/healthz || exit 1
 
-# Start server with dynamic port support for Render / Cloud Run / Docker
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+# Ensure start script is executable
+RUN chmod +x start.sh
+
+# Start server via start.sh (handles migrations and dynamic port)
+CMD ["sh", "start.sh"]
