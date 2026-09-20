@@ -269,8 +269,12 @@ class DocumentNormalizer:
             if 1 <= level <= 6:
                 return level
 
-        # Detect common heading patterns
+        # Detect common Persian and English heading patterns
         heading_patterns = [
+            (r"^(بخش|فصل|باب|کتاب)\s+(اول|دوم|سوم|چهارم|پنجم|ششم|هفتم|هشتم|نهم|دهم|یازدهم|دوازدهم|\d+|[۰-۹]+)", 1),
+            (r"^(مبحث|گفتار)\s+(اول|دوم|سوم|چهارم|پنجم|ششم|\d+|[۰-۹]+)", 2),
+            (r"^ماده\s*[-–—]?\s*(\d+|[۰-۹]+)", 2),
+            (r"^(?:تبصره|بند)\s*[-–—]?\s*(?:\d+|[۰-۹]+|الف|ب|ج|د|هـ|و|ز|ح)?", 3),
             (r"^(Chapter|CHAPTER)\s+\d+", 1),
             (r"^(Section|SECTION)\s+\d+", 2),
             (r"^(Article|ARTICLE)\s+\d+", 2),
