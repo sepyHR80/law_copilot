@@ -1,4 +1,5 @@
 from functools import lru_cache
+from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -39,6 +40,14 @@ class Settings(BaseSettings):
     reranker_top_n: int = 5
     reranker_batch_size: int = 32
     reranker_enabled: bool = True
+
+    # LLM / LiteLLM configuration
+    llm_base_url: str = "http://localhost:4000/v1"
+    llm_api_key: str = "test-key"
+    llm_model: str = "gpt-4o-mini"
+    llm_timeout: float = 60.0
+    llm_temperature: float = 0.0
+    llm_max_tokens: Optional[int] = None
 
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "law_copilot"
