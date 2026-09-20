@@ -6,14 +6,20 @@ from app.domain.retrieval.exceptions import (
     VectorDimensionError,
 )
 from app.domain.retrieval.models import (
+    LexicalSearchQuery,
     RetrievalFilter,
     RetrievalResult,
     VectorSearchQuery,
 )
-from app.domain.retrieval.protocol import VectorRetrieverProtocol
+from app.domain.retrieval.protocol import (
+    LexicalRetrieverProtocol,
+    VectorRetrieverProtocol,
+)
 
 __all__ = [
     "InvalidQueryError",
+    "LexicalRetrieverProtocol",
+    "LexicalSearchQuery",
     "RetrievalError",
     "RetrievalFilter",
     "RetrievalResult",

@@ -25,6 +25,15 @@ class VectorSearchQuery(BaseModel):
     filters: Optional[RetrievalFilter] = None
 
 
+class LexicalSearchQuery(BaseModel):
+    """Query object for lexical (full-text) retrieval."""
+
+    query: str
+    top_k: int = Field(default=5, ge=1)
+    min_score: Optional[float] = None
+    filters: Optional[RetrievalFilter] = None
+
+
 class RetrievalResult(BaseModel):
     """A single normalized retrieval result item.
 
