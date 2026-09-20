@@ -1,51 +1,92 @@
+version: "3.8"
+
 services:
-
-  postgres:
-    image: pgvector/pgvector:pg17
-    container_name: law-copilot-postgres
-    restart: unless-stopped
-
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: law-copilot-api
+    ports:
+      - "8000:8000"
     environment:
-      POSTGRES_DB: law_copilot
-      POSTGRES_USER: law_copilot
-      POSTGRES_PASSWORD: law_copilot
+      - APP_ENV=production
+      - DATABASE_URL=postgresql+psycopg://postgres:postgres@db:5432/law_copilot
+      - STORAGE_BACKEND=minio
+      - MINIO_ENDPOINT=minio:9000
+      - MINIO_ACCESS_KEY=minioadmin
+      - MINIO_SECRET_KEY=minioadmin
+      - MINIO_SECURE=false
+      - MINIO_BUCKET_DOCUMENTS=law-documents
+      - PROMETHEUS_MULTIPROC_DIR=/tmp
+    depends_on:
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  db:
+    image: pgvector/pgvector:pg16
+    container_name: law-copilot-db
     ports:
       - "5432:5432"
-
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=law_copilot
     volumes:
-      - postgres_data:/var/lib/postgresql/data
-
+      - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "pg_isready -U law_copilot -d law_copilot"
-        ]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d law_copilot"]
       interval: 5s
       timeout: 5s
-      retries: 10
-
+      retries: 5
 
   minio:
-    image: quay.io/minio/minio:latest
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
     container_name: law-copilot-minio
-    restart: unless-stopped
-
     command: server /data --console-address ":9001"
-
-    environment:
-      MINIO_ROOT_USER: law_copilot
-      MINIO_ROOT_PASSWORD: law_copilot_password
-
     ports:
       - "9000:9000"
       - "9001:9001"
-
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin
     volumes:
-      - minio_data:/data
+      - miniodata:/data
 
+  prometheus:
+    image: prom/prometheus:v2.49.1
+    container_name: law-copilot-prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.54
+    container_name: law-copilot-jaeger
+    ports:
+      - "16686:16686"  # Web UI
+      - "4318:4318"    # OTLP HTTP receiver
+
+  grafana:
+    image: grafana/grafana:10.3.3
+    container_name: law-copilot-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - prometheus
 
 volumes:
-  postgres_data:
-  minio_data:
+  pgdata:
+  miniodata:
