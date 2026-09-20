@@ -3,6 +3,7 @@
 from typing import List, Protocol, runtime_checkable
 
 from app.domain.retrieval.models import (
+    HybridSearchQuery,
     LexicalSearchQuery,
     RetrievalResult,
     VectorSearchQuery,
@@ -46,5 +47,25 @@ class LexicalRetrieverProtocol(Protocol):
         Raises:
             InvalidQueryError: If query is malformed.
             RetrievalError: If database or retrieval query execution fails.
+        """
+        ...
+
+
+@runtime_checkable
+class HybridRetrieverProtocol(Protocol):
+    """Abstract interface for hybrid (vector + lexical) retrieval."""
+
+    async def search(self, query: HybridSearchQuery) -> List[RetrievalResult]:
+        """Execute hybrid retrieval with Reciprocal Rank Fusion.
+
+        Args:
+            query: HybridSearchQuery with query text, optional vector, and parameters.
+
+        Returns:
+            List of RetrievalResult objects ordered by fused rank.
+
+        Raises:
+            InvalidQueryError: If query is malformed.
+            RetrievalError: If retrieval execution fails.
         """
         ...

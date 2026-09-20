@@ -34,6 +34,17 @@ class LexicalSearchQuery(BaseModel):
     filters: Optional[RetrievalFilter] = None
 
 
+class HybridSearchQuery(BaseModel):
+    """Query object for hybrid (vector + lexical) retrieval with Reciprocal Rank Fusion."""
+
+    text_query: str
+    vector: Optional[List[float]] = None
+    top_k: int = Field(default=5, ge=1)
+    candidate_k: int = Field(default=20, ge=1)
+    rrf_k: int = Field(default=60, ge=1)
+    filters: Optional[RetrievalFilter] = None
+
+
 class RetrievalResult(BaseModel):
     """A single normalized retrieval result item.
 
