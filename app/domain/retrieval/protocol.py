@@ -1,6 +1,6 @@
 """Vector retriever protocol."""
 
-from typing import List, Protocol, runtime_checkable
+from typing import List, Optional, Protocol, Sequence, runtime_checkable
 
 from app.domain.retrieval.models import (
     HybridSearchQuery,
@@ -67,5 +67,31 @@ class HybridRetrieverProtocol(Protocol):
         Raises:
             InvalidQueryError: If query is malformed.
             RetrievalError: If retrieval execution fails.
+        """
+        ...
+
+
+@runtime_checkable
+class RerankerProtocol(Protocol):
+    """Abstract interface for cross-encoder reranking."""
+
+    def rerank(
+        self,
+        query: str,
+        candidates: Sequence[RetrievalResult],
+        top_n: Optional[int] = None,
+    ) -> List[RetrievalResult]:
+        """Rerank candidate chunks against a query.
+
+        Args:
+            query: The user query string.
+            candidates: Sequence of RetrievalResult candidates to score and reorder.
+            top_n: Optional limit on the number of returned reranked candidates.
+
+        Returns:
+            List of RetrievalResult objects ordered by rerank score descending, with updated rank.
+
+        Raises:
+            RerankingError: If reranking inference fails.
         """
         ...

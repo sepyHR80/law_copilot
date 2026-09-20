@@ -27,3 +27,11 @@ class VectorDimensionError(RetrievalError):
 
 class InvalidQueryError(RetrievalError):
     """Raised when a search query is invalid (e.g. empty vector, top_k <= 0)."""
+
+
+class RerankingError(RetrievalError):
+    """Base exception for errors during reranking."""
+
+
+class RerankerModelLoadError(RerankingError):
+    """Raised when a reranker model cannot be loaded or initialized."""

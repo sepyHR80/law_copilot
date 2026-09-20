@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     embedding_timeout: int = 30
     embedding_batch_size: int = 100
 
+    # Reranker configuration
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    reranker_top_n: int = 5
+    reranker_batch_size: int = 32
+    reranker_enabled: bool = True
+
     minio_endpoint: str = "localhost:9000"
     minio_access_key: str = "law_copilot"
     minio_secret_key: str = "law_copilot_password"
