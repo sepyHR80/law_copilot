@@ -1,0 +1,8 @@
+LEGAL QUESTION:
+{question}
+
+SUPPLIED EVIDENCE:
+{evidence_block}
+
+INSTRUCTIONS:
+Carefully review the supplied evidence above. Answer the legal question using only the verified facts contained within the evidence. Follow all grounding rules and provide specific evidence citations.
