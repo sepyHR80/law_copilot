@@ -1,0 +1,4 @@
+This is a sample text document.
+Article 1: General Provisions
+This is the complete text content.
+It preserves UTF-8 characters: یا عليكم
