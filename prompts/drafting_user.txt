@@ -1,0 +1,14 @@
+DRAFTING REQUEST:
+Topic: {topic}
+Document Type: {document_type}
+Recipient / Parties: {recipient}
+Jurisdiction: {jurisdiction}
+Additional Instructions: {additional_instructions}
+
+AUTHORITATIVE FACTUAL EVIDENCE (Substantive Legal Authority & Facts):
+{factual_evidence_block}
+
+STYLISTIC REFERENCES (Formatting, Tone, and Layout Examples - DO NOT CITE AS LEGAL AUTHORITY):
+{style_references_block}
+
+Please generate the complete legal draft in valid JSON following the required schema. Ground all legal claims strictly in the Factual Evidence. Emulate the structure and tone of the Style References without citing them or adopting their factual particulars.

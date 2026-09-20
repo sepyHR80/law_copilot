@@ -70,6 +70,25 @@ def create_analyze_intent_node():
                 "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "general"},
             }
 
+        # Document drafting keywords per Spec Section 20.2: Intent = document_generation
+        drafting_indicators = [
+            "draft",
+            "write a contract",
+            "write an agreement",
+            "draft a complaint",
+            "prepare a notice",
+            "document generation",
+            "generate a draft",
+            "draft an agreement",
+            "draft a letter",
+            "prepare a contract",
+        ]
+        if any(indicator in cleaned for indicator in drafting_indicators):
+            return {
+                "intent": "document_generation",
+                "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "document_generation"},
+            }
+
         return {
             "intent": "legal_qa",
             "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "legal_qa"},
