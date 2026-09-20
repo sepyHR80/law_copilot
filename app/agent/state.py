@@ -23,6 +23,8 @@ class AgentState(TypedDict, total=False):
     # Retrieval & Evidence
     retrieval_results: List[RetrievalResult]
     selected_evidence: List[EvidenceItem]
+    external_sources: List[Any]
+    enable_external_search: bool
     context_text: str
     memory_context: Optional[str]
     tool_results: Dict[str, Any]

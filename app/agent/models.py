@@ -16,6 +16,7 @@ class AgentRequest(BaseModel):
     filters: Optional[RetrievalFilter] = None
     max_retries: int = Field(default=2, ge=0, le=5)
     top_k: int = Field(default=5, ge=1, le=20)
+    enable_external_search: bool = Field(default=False)
 
 
 class AgentResponse(BaseModel):

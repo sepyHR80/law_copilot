@@ -4,12 +4,18 @@ from pathlib import Path
 from typing import Any, Optional
 from langgraph.graph import END, START, StateGraph
 
-from app.agent.edges import route_evidence, route_intent, route_verification
+from app.agent.edges import (
+    route_evidence,
+    route_external_evidence,
+    route_intent,
+    route_verification,
+)
 from app.agent.models import AgentRequest, AgentResponse
 from app.agent.nodes import (
     create_analyze_intent_node,
     create_assess_evidence_node,
     create_build_context_node,
+    create_external_search_node,
     create_generate_draft_node,
     create_handle_general_node,
     create_handle_insufficient_node,
@@ -33,6 +39,8 @@ def build_legal_agent_graph(
     llm_service: Optional[LLMService] = None,
     context_builder: Optional[ContextBuilder] = None,
     memory_service: Optional[Any] = None,
+    search_service: Optional[Any] = None,
+    verification_service: Optional[Any] = None,
     prompts_dir: Optional[Path] = None,
     checkpointer: Optional[Any] = None,
 ):
@@ -57,13 +65,14 @@ def build_legal_agent_graph(
         create_retrieve_knowledge_node(hybrid_retriever=hybrid_retriever, reranker=reranker),
     )
     workflow.add_node("assess_evidence", create_assess_evidence_node())
+    workflow.add_node("external_search", create_external_search_node(search_service))
     workflow.add_node("handle_insufficient", create_handle_insufficient_node())
-    workflow.add_node("build_context", create_build_context_node(context_builder))
+    workflow.add_node("build_context", create_build_context_node(context_builder, search_service))
     workflow.add_node(
         "generate_draft",
         create_generate_draft_node(llm_service=llm_service, prompts_dir=prompts_dir or Path("prompts")),
     )
-    workflow.add_node("verify_answer", create_verify_answer_node(context_builder))
+    workflow.add_node("verify_answer", create_verify_answer_node(context_builder, verification_service))
     workflow.add_node("repair_draft", create_repair_draft_node(llm_service))
 
     # Add transitions
@@ -86,6 +95,16 @@ def build_legal_agent_graph(
     workflow.add_conditional_edges(
         "assess_evidence",
         route_evidence,
+        {
+            "handle_insufficient": "handle_insufficient",
+            "external_search": "external_search",
+            "build_context": "build_context",
+        },
+    )
+
+    workflow.add_conditional_edges(
+        "external_search",
+        route_external_evidence,
         {
             "handle_insufficient": "handle_insufficient",
             "build_context": "build_context",
@@ -124,6 +143,7 @@ class LegalAgent:
             "user_id": request.user_id,
             "conversation_id": request.conversation_id,
             "filters": request.filters,
+            "enable_external_search": request.enable_external_search,
             "retry_count": 0,
             "max_retries": request.max_retries,
             "errors": [],

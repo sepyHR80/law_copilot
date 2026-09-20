@@ -14,8 +14,17 @@ def route_intent(state: AgentState) -> str:
 
 
 def route_evidence(state: AgentState) -> str:
-    """Route based on retrieved evidence sufficiency."""
+    """Route based on retrieved internal evidence sufficiency."""
     if not state.get("is_sufficient", True) or not state.get("retrieval_results"):
+        if state.get("enable_external_search", False):
+            return "external_search"
+        return "handle_insufficient"
+    return "build_context"
+
+
+def route_external_evidence(state: AgentState) -> str:
+    """Route after external search fallback."""
+    if not state.get("is_sufficient", True) or not state.get("external_sources"):
         return "handle_insufficient"
     return "build_context"
 

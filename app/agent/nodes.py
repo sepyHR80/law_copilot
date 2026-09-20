@@ -202,7 +202,44 @@ def create_handle_insufficient_node():
     return handle_insufficient
 
 
-def create_build_context_node(context_builder: ContextBuilder):
+def create_external_search_node(search_service: Optional[Any] = None):
+    """Create node that searches external web sources when internal retrieval is insufficient."""
+
+    async def external_search(state: AgentState) -> Dict[str, Any]:
+        query = state.get("normalized_query", state.get("query", "")).strip()
+        if not search_service or not query:
+            return {
+                "external_sources": [],
+                "is_sufficient": False,
+                "trace_metadata": {**state.get("trace_metadata", {}), "external_search_skipped": True},
+            }
+
+        try:
+            sources = await search_service.search_and_validate(query=query)
+            is_sufficient = len(sources) > 0
+            return {
+                "external_sources": sources,
+                "is_sufficient": is_sufficient,
+                "trace_metadata": {
+                    **state.get("trace_metadata", {}),
+                    "external_sources_count": len(sources),
+                    "external_search_executed": True,
+                },
+            }
+        except Exception:
+            return {
+                "external_sources": [],
+                "is_sufficient": False,
+                "trace_metadata": {**state.get("trace_metadata", {}), "external_search_error": True},
+            }
+
+    return external_search
+
+
+def create_build_context_node(
+    context_builder: ContextBuilder,
+    search_service: Optional[Any] = None,
+):
     """Create node structuring evidence into token-bounded context."""
 
     async def build_context(state: AgentState) -> Dict[str, Any]:
@@ -210,12 +247,21 @@ def create_build_context_node(context_builder: ContextBuilder):
         evidence_items = context_builder.build_evidence_items(retrieval_results)
         context_text = context_builder.format_context(evidence_items)
 
+        external_sources = state.get("external_sources", [])
+        if external_sources and search_service is not None:
+            ext_text = search_service.format_external_context(external_sources)
+            if context_text and context_text != "No relevant evidence documents retrieved.":
+                context_text = f"{context_text}\n\n---\n\n{ext_text}"
+            else:
+                context_text = ext_text
+
         return {
             "selected_evidence": evidence_items,
             "context_text": context_text,
             "trace_metadata": {
                 **state.get("trace_metadata", {}),
                 "evidence_items_count": len(evidence_items),
+                "external_sources_count": len(external_sources),
             },
         }
 
@@ -276,7 +322,10 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
     return generate_draft
 
 
-def create_verify_answer_node(context_builder: ContextBuilder):
+def create_verify_answer_node(
+    context_builder: ContextBuilder,
+    verification_service: Optional[Any] = None,
+):
     """Create node verifying draft citations and grounding."""
 
     async def verify_answer(state: AgentState) -> Dict[str, Any]:
@@ -295,6 +344,34 @@ def create_verify_answer_node(context_builder: ContextBuilder):
 
         # Resolve citations strictly
         verified = context_builder.resolve_citations(raw_citations, evidence_items)
+
+        # If verification service is provided, run comprehensive claim verifier
+        if verification_service is not None:
+            result = verification_service.verify(
+                response_text=draft,
+                citations=verified,
+                evidence_items=evidence_items,
+                raw_citations=raw_citations,
+            )
+            if not result.passed:
+                return {
+                    "verification_passed": False,
+                    "verification_feedback": result.repair_guidance or "Please fix claims and citations.",
+                    "verification_result": result.model_dump(mode="json"),
+                    "trace_metadata": {
+                        **state.get("trace_metadata", {}),
+                        "verification": "failed_claim_verifier",
+                        "unsupported_claims": len(result.unsupported_claims),
+                        "citation_errors": len(result.citation_errors),
+                    },
+                }
+            return {
+                "verification_passed": True,
+                "citations": verified,
+                "final_response": draft,
+                "verification_result": result.model_dump(mode="json"),
+                "trace_metadata": {**state.get("trace_metadata", {}), "verification": "passed"},
+            }
 
         # If raw citations were claimed but NONE matched valid evidence -> verification failure
         if raw_citations and not verified:
