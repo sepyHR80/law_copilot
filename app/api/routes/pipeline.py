@@ -299,10 +299,10 @@ async def process_document_pipeline(
             child_chunks = [c for c in chunks if c.chunk_type == "child"]
 
             # Save chunks to DB if DB is active and version record exists
+            embeddings_map = {}
             saved_chunks_count = 0
             if db and doc_version_record:
                 try:
-                    embeddings_map = {}
                     if settings.embedding_api_key and settings.embedding_api_key != "test-key":
                         try:
                             yield sse_event(

@@ -206,8 +206,18 @@ def create_handle_insufficient_node():
     """Create node returning standard grounded insufficient evidence response."""
 
     async def handle_insufficient(state: AgentState) -> Dict[str, Any]:
+        query_text = state.get("query", "")
+        is_persian = any("\u0600" <= c <= "\u06ff" for c in query_text)
+        if is_persian:
+            response_text = (
+                "بر اساس مدارک و اسناد بارگذاری‌شده در پایگاه دانش، شواهد و اطلاعات کافی برای پاسخ دقیق به این پرسش یافت نشد. "
+                "لطفاً سند قانونی مربوطه را از بخش بارگذاری اضافه کنید تا بتوانم با استناد به آن پاسخ دهم."
+            )
+        else:
+            response_text = "Based on the provided documents, there is insufficient evidence to answer this question."
+
         return {
-            "final_response": "Based on the provided documents, there is insufficient evidence to answer this question.",
+            "final_response": response_text,
             "is_sufficient": False,
             "citations": [],
             "selected_evidence": [],

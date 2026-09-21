@@ -38,9 +38,10 @@ def readiness_probe(db: Session = Depends(get_db)) -> dict[str, str]:
     is_ready = db_status == "connected"
     status_code = status.HTTP_200_OK if is_ready else status.HTTP_503_SERVICE_UNAVAILABLE
 
-    return Response(
-        content=f'{{"status": "{"ready" if is_ready else "not_ready"}", "database": "{db_status}"}}',
-        media_type="application/json",
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        content={"status": "ready" if is_ready else "not_ready", "database": db_status},
         status_code=status_code,
     )
 
