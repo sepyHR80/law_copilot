@@ -35,6 +35,5 @@ services:
 databases:
   - name: law-copilot-db
     databaseName: law_copilot
-    user: postgres
     plan: free
     postgresMajorVersion: "16"
