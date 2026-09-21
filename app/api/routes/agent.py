@@ -67,6 +67,20 @@ async def chat_with_agent(
     try:
         return await agent.run(request)
     except Exception as exc:
+        err_str = str(exc).lower()
+        if "rate limit" in err_str or "quota exceeded" in err_str or "429" in err_str:
+            return AgentResponse(
+                query=request.query,
+                response=(
+                    "سقف درخواست‌های روزانه هوش مصنوعی موقتاً تکمیل شده است. "
+                    "سیستم به صورت خودکار مدل‌های جایگزین را امتحان می‌کند؛ لطفاً چند لحظه دیگر مجدداً تلاش فرمایید."
+                ),
+                intent="legal_qa",
+                citations=[],
+                evidence=[],
+                is_sufficient=False,
+                trace_metadata={"rate_limit_handled": True},
+            )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Agent execution failed: {exc}",

@@ -59,7 +59,7 @@ class Settings(BaseSettings):
     # LLM / LiteLLM configuration
     llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
     llm_api_key: str = _DEFAULT_GEMINI_API_KEY
-    llm_model: str = "gemini-flash-latest"
+    llm_model: str = "gemini-3.5-flash-lite"
     llm_timeout: float = 60.0
     llm_temperature: float = 0.0
     llm_max_tokens: Optional[int] = None
