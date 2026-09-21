@@ -11,13 +11,25 @@ services:
         fromDatabase:
           name: law-copilot-db
           property: connectionString
-      - key: OPENAI_API_KEY
-        sync: false
+      - key: EMBEDDING_ENDPOINT
+        value: "https://generativelanguage.googleapis.com/v1beta/openai"
+      - key: EMBEDDING_MODEL
+        value: "gemini-embedding-001"
+      - key: EMBEDDING_DIMENSION
+        value: "1536"
       - key: EMBEDDING_API_KEY
         sync: false
+      - key: LLM_BASE_URL
+        value: "https://generativelanguage.googleapis.com/v1beta/openai"
+      - key: LLM_MODEL
+        value: "gemini-flash-latest"
+      - key: LLM_API_KEY
+        sync: false
+      - key: RERANKER_ENABLED
+        value: "false"
       - key: MINIO_ENDPOINT
         value: ""
-      - key: MINIO_BUCKET_DOCUMENTS
+      - key: MINIO_BUCKET_NAME
         value: "law-copilot-documents"
 
 databases:

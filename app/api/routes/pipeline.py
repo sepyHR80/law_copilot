@@ -23,6 +23,7 @@ from app.domain.documents.service import SUPPORTED_MIME_TYPES, VALID_KNOWLEDGE_T
 from app.infrastructure.db.models.document import DocumentChunk
 from app.infrastructure.db.repositories.document import SQLAlchemyDocumentRepository
 from app.infrastructure.db.session import SessionLocal
+from app.infrastructure.embeddings.openai_provider import OpenAIEmbeddingProvider
 from app.infrastructure.storage import MinioStorage
 from app.ingestion.chunking.chunker import StructureAwareChunker
 from app.ingestion.chunking.models import ChunkingConfig
@@ -294,6 +295,24 @@ async def process_document_pipeline(
             saved_chunks_count = 0
             if db and doc_version_record:
                 try:
+                    embeddings_map = {}
+                    if settings.embedding_api_key and settings.embedding_api_key != "test-key":
+                        try:
+                            embed_provider = OpenAIEmbeddingProvider(
+                                endpoint=settings.embedding_endpoint,
+                                api_key=settings.embedding_api_key,
+                                model=settings.embedding_model,
+                                expected_dimension=settings.embedding_dimension,
+                                batch_size=settings.embedding_batch_size,
+                            )
+                            chunk_texts = [chk.content for chk in chunks]
+                            all_embeddings = await embed_provider.embed_texts(chunk_texts)
+                            for chk, emb in zip(chunks, all_embeddings):
+                                embeddings_map[chk.id] = emb
+                            logger.info("Successfully generated embeddings for %d chunks", len(chunks))
+                        except Exception as emb_err:
+                            logger.warning("Embedding generation during ingestion failed or skipped: %s", emb_err)
+
                     for chk in chunks:
                         db_chunk = DocumentChunk(
                             id=chk.id,
@@ -304,6 +323,7 @@ async def process_document_pipeline(
                             section=chk.section,
                             chunk_index=chk.chunk_index,
                             chunk_metadata=chk.metadata,
+                            embedding=embeddings_map.get(chk.id),
                         )
                         db.add(db_chunk)
                     db.commit()

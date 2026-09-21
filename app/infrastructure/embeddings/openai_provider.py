@@ -13,6 +13,7 @@ from openai import AsyncOpenAI
 from app.domain.embeddings.exceptions import (
     EmbeddingConfigurationError,
     EmbeddingDimensionMismatchError,
+    EmbeddingError,
     EmbeddingProviderError,
     EmbeddingValidationError,
 )
@@ -39,6 +40,7 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         expected_dimension: int = 1536,
         timeout: float = 30.0,
         batch_size: int = 100,
+        dimensions: Optional[int] = None,
         client: Optional[AsyncOpenAI] = None,
     ) -> None:
         if not endpoint or not endpoint.strip():
@@ -58,6 +60,14 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
         self.expected_dimension = expected_dimension
         self.timeout = timeout
         self.batch_size = batch_size
+
+        if dimensions is not None:
+            self.dimensions: Optional[int] = dimensions
+        elif "gemini" in self.model.lower() or "generativelanguage" in self.endpoint.lower():
+            # Google AI Studio / Gemini OpenAI endpoint defaults to 3072 unless dimensions is specified
+            self.dimensions = self.expected_dimension
+        else:
+            self.dimensions = None
 
         # Retain single reusable client
         self._client = client or AsyncOpenAI(
@@ -119,17 +129,25 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
 
         for attempt in range(max_attempts):
             try:
-                response = await self._client.embeddings.create(
-                    input=batch_texts,
-                    model=self.model,
-                )
+                create_kwargs: Dict[str, Any] = {
+                    "input": batch_texts,
+                    "model": self.model,
+                }
+                if self.dimensions is not None:
+                    create_kwargs["dimensions"] = self.dimensions
+
+                response = await self._client.embeddings.create(**create_kwargs)
 
                 # Reconstruct ordering by item.index
                 ordered: List[Optional[List[float]]] = [None] * len(batch_texts)
-                for item in response.data:
+                for enum_idx, item in enumerate(response.data):
                     idx = getattr(item, "index", None)
                     if idx is None and isinstance(item, dict):
                         idx = item.get("index")
+                    # Fallback to enum_idx if idx is None (e.g. Google AI Studio omits 0 due to protobuf zero-value)
+                    if idx is None:
+                        idx = enum_idx
+
                     emb = getattr(item, "embedding", None)
                     if emb is None and isinstance(item, dict):
                         emb = item.get("embedding")

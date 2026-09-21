@@ -8,7 +8,7 @@ from app.agent.models import AgentRequest, AgentResponse
 from app.core.config import get_settings
 from app.infrastructure.db.session import SessionLocal
 from app.infrastructure.embeddings.openai_provider import OpenAIEmbeddingProvider
-from app.infrastructure.reranking.cross_encoder import CrossEncoderReranker
+from app.infrastructure.reranking import get_default_reranker
 from app.llm.service import LLMService
 from app.rag.context_builder import ContextBuilder
 from app.retrieval.hybrid import HybridSearchService
@@ -43,10 +43,7 @@ def get_legal_agent(db: Session = Depends(get_db)) -> LegalAgent:
         embedding_provider=embedding_provider,
     )
 
-    reranker = CrossEncoderReranker(
-        model_name=settings.reranker_model,
-        batch_size=settings.reranker_batch_size,
-    )
+    reranker = get_default_reranker()
 
     llm_service = LLMService()
     context_builder = ContextBuilder()
