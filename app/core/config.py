@@ -28,12 +28,12 @@ class Settings(BaseSettings):
         return v
 
     # Embedding configuration
-    embedding_endpoint: str = "http://localhost:4000/v1"
-    embedding_api_key: str = "test-key"
-    embedding_model: str = "text-embedding-3-small"
+    embedding_endpoint: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    embedding_api_key: str = ""
+    embedding_model: str = "gemini-embedding-001"
     embedding_dimension: int = 1536
     embedding_timeout: int = 30
-    embedding_batch_size: int = 100
+    embedding_batch_size: int = 50
 
     # Reranker configuration
     reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
@@ -42,9 +42,9 @@ class Settings(BaseSettings):
     reranker_enabled: bool = True
 
     # LLM / LiteLLM configuration
-    llm_base_url: str = "http://localhost:4000/v1"
-    llm_api_key: str = "test-key"
-    llm_model: str = "gpt-4o-mini"
+    llm_base_url: str = "https://generativelanguage.googleapis.com/v1beta/openai"
+    llm_api_key: str = ""
+    llm_model: str = "gemini-flash-latest"
     llm_timeout: float = 60.0
     llm_temperature: float = 0.0
     llm_max_tokens: Optional[int] = None

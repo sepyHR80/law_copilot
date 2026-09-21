@@ -59,10 +59,15 @@ def create_analyze_intent_node():
 
         # Fast deterministic classification for common conversational intents
         greetings = {"hello", "hi", "hey", "greetings", "help", "morning", "afternoon", "evening"}
+        persian_greetings = {
+            "سلام", "درود", "سلام علیکم", "سلام علیک", "صبح بخیر", "عصر بخیر", "شب بخیر",
+            "خسته نباشید", "روز خوش", "وقت بخیر", "کمک", "راهنما", "سلامتی"
+        }
         is_greeting = (
             cleaned in greetings
-            or any(cleaned.startswith(g) for g in ["hello", "hi", "hey", "greetings", "who are you", "what can you do", "help"])
-            or bool(words.intersection({"hello", "hi", "hey", "greetings"}))
+            or cleaned in persian_greetings
+            or any(cleaned.startswith(g) for g in ["hello", "hi", "hey", "greetings", "who are you", "what can you do", "help", "سلام", "درود", "صبح بخیر", "وقت بخیر"])
+            or bool(words.intersection({"hello", "hi", "hey", "greetings", "سلام", "درود"}))
         )
         if is_greeting or (len(words) <= 1 and cleaned in {"test", "ping"}):
             return {
@@ -102,11 +107,21 @@ def create_handle_general_node():
     """Create node that handles conversational and non-retrieval questions."""
 
     async def handle_general(state: AgentState) -> Dict[str, Any]:
-        response_text = (
-            "Hello! I am Law Copilot, your specialized legal AI assistant. "
-            "You can ask me questions about your uploaded contracts, statutes, case law, "
-            "and regulatory documents. I provide grounded answers with precise document citations."
-        )
+        query_text = state.get("query", "")
+        is_persian = any("\u0600" <= c <= "\u06ff" for c in query_text)
+        if is_persian:
+            response_text = (
+                "درود بر شما! من دستیار هوشمند حقوقی Law Copilot هستم. "
+                "آماده‌ام تا به پرسش‌های حقوقی شما بر اساس قوانین، آیین‌نامه‌ها، احکام قضایی "
+                "و قراردادهای بارگذاری‌شده در پایگاه دانش پاسخ دهم. "
+                "شما می‌توانید سوال حقوقی خود را بپرسید تا با استناد دقیق به مواد قانونی به آن پاسخ دهم."
+            )
+        else:
+            response_text = (
+                "Hello! I am Law Copilot, your specialized legal AI assistant. "
+                "You can ask me questions about your uploaded contracts, statutes, case law, "
+                "and regulatory documents. I provide grounded answers with precise document citations."
+            )
         return {
             "final_response": response_text,
             "is_sufficient": True,

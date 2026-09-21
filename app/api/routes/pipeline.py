@@ -305,6 +305,17 @@ async def process_document_pipeline(
                     embeddings_map = {}
                     if settings.embedding_api_key and settings.embedding_api_key != "test-key":
                         try:
+                            yield sse_event(
+                                "progress",
+                                {
+                                    "stage": "embedding",
+                                    "status": "started",
+                                    "progress": 85,
+                                    "message": f"در حال تولید بردار معنایی (Embedding) با هوش مصنوعی برای {len(chunks)} قطعه...",
+                                },
+                            )
+                            await asyncio.sleep(0.05)
+
                             embed_provider = OpenAIEmbeddingProvider(
                                 endpoint=settings.embedding_endpoint,
                                 api_key=settings.embedding_api_key,
@@ -317,6 +328,18 @@ async def process_document_pipeline(
                             for chk, emb in zip(chunks, all_embeddings):
                                 embeddings_map[chk.id] = emb
                             logger.info("Successfully generated embeddings for %d chunks", len(chunks))
+
+                            yield sse_event(
+                                "progress",
+                                {
+                                    "stage": "embedding",
+                                    "status": "completed",
+                                    "progress": 92,
+                                    "message": f"بردارهای معنایی با موفقیت تولید و در پایگاه داده ایندکس شدند ({len(embeddings_map)} بردار).",
+                                    "embedded_count": len(embeddings_map),
+                                },
+                            )
+                            await asyncio.sleep(0.05)
                         except Exception as emb_err:
                             logger.warning("Embedding generation during ingestion failed or skipped: %s", emb_err)
 
@@ -351,6 +374,7 @@ async def process_document_pipeline(
                         "section": chk.section,
                         "section_path": chk.section_path,
                         "char_count": len(chk.content),
+                        "has_embedding": chk.id in embeddings_map,
                         "content_preview": chk.content[:400] + ("..." if len(chk.content) > 400 else ""),
                         "full_content": chk.content,
                     }
@@ -368,6 +392,7 @@ async def process_document_pipeline(
                     "child_chunks_count": len(child_chunks),
                     "saved_to_db": saved_chunks_count > 0,
                     "sample_chunks": sample_chunks_data,
+                    "embeddings_count": len(embeddings_map),
                 },
             )
             await asyncio.sleep(0.05)
