@@ -135,16 +135,24 @@ async def process_document_pipeline(
 
             # Attempt DB & Storage persistence
             saved_to_storage = False
-            try:
-                storage = MinioStorage()
-                storage.initialize()
-                safe_name = os.path.basename(filename).replace("..", "")
-                storage_key = f"documents/{doc_id}/{version}/{safe_name}"
-                storage.put_object(key=storage_key, data=content, content_type=mime_type)
+            safe_name = os.path.basename(filename).replace("..", "")
+            storage_key = f"documents/{doc_id}/{version}/{safe_name}"
 
+            # 1. MinIO / Object Storage (optional if configured)
+            if settings.minio_endpoint and settings.minio_endpoint.strip():
+                try:
+                    storage = MinioStorage()
+                    storage.initialize()
+                    storage.put_object(key=storage_key, data=content, content_type=mime_type)
+                    saved_to_storage = True
+                except Exception as storage_exc:
+                    logger.warning("Object storage upload skipped or failed: %s", storage_exc)
+
+            # 2. Database Record Persistence
+            try:
+                import hashlib
                 db = SessionLocal()
                 repo = SQLAlchemyDocumentRepository(db)
-                import hashlib
                 checksum = hashlib.sha256(content).hexdigest()
                 doc_record, doc_version_record = repo.create_with_version(
                     document_id=doc_id,
@@ -157,9 +165,8 @@ async def process_document_pipeline(
                     checksum=checksum,
                 )
                 repo.commit()
-                saved_to_storage = True
-            except Exception as storage_exc:
-                logger.warning("Storage/DB skipped or failed (demo fallback active): %s", storage_exc)
+            except Exception as db_exc:
+                logger.warning("Database record creation failed: %s", db_exc)
                 if db:
                     db.rollback()
 
