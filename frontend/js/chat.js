@@ -27,6 +27,13 @@ document.addEventListener("DOMContentLoaded", () => {
     unknown: "پرسش حقوقی",
   };
 
+  // Manage Conversation ID across messages
+  let currentConversationId = localStorage.getItem("law_copilot_active_conv_id");
+  if (!currentConversationId) {
+    currentConversationId = crypto.randomUUID();
+    localStorage.setItem("law_copilot_active_conv_id", currentConversationId);
+  }
+
   // Auto-resize textarea
   queryInput.addEventListener("input", () => {
     queryInput.style.height = "auto";
@@ -56,6 +63,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // New Chat Button
   newChatBtn.addEventListener("click", () => {
+    currentConversationId = crypto.randomUUID();
+    localStorage.setItem("law_copilot_active_conv_id", currentConversationId);
     chatMessages.innerHTML = `
       <div class="message-bubble assistant">
         <div class="bubble-meta">
@@ -100,6 +109,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const payload = {
       query: query,
+      conversation_id: currentConversationId,
       top_k: parseInt(topKInput.value) || 5,
       enable_external_search: enableExternalSearch.checked,
       filters: Object.keys(filters).length > 0 ? filters : null,
