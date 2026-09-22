@@ -61,7 +61,7 @@
         </div>
         <div class="step-node" id="stepNode2">
           <div class="step-icon">۲</div>
-          <span class="step-label">استخراج متن (PDF)</span>
+          <span class="step-label">استخراج متن</span>
         </div>
         <div class="step-node" id="stepNode3">
           <div class="step-icon">۳</div>
@@ -69,10 +69,14 @@
         </div>
         <div class="step-node" id="stepNode4">
           <div class="step-icon">۴</div>
-          <span class="step-label">قطعه‌بندی (Chunking)</span>
+          <span class="step-label">قطعه‌بندی هوشمند</span>
         </div>
         <div class="step-node" id="stepNode5">
           <div class="step-icon">۵</div>
+          <span class="step-label">بردارسازی معنایی</span>
+        </div>
+        <div class="step-node" id="stepNode6">
+          <div class="step-icon">۶</div>
           <span class="step-label">تکمیل و ثبت نهایی</span>
         </div>
       </div>
@@ -248,6 +252,53 @@
         </div>
       </div>
 
+      <!-- Stage 5: Semantic Embedding Status Card -->
+      <div class="card" id="embeddingCard">
+        <div class="card-header">
+          <div>
+            <h2 class="card-title">
+              <span>🧠</span>
+              <span>بردارسازی معنایی با هوش مصنوعی (Semantic Embedding)</span>
+            </h2>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin-top: 0.2rem;">
+              تولید بردار معنایی متراکم (۱۵۳۶ بعدی) برای تمامی قطعات متنی جهت امکان جستجوی دقیق معنایی در پایگاه دانش.
+            </p>
+          </div>
+          <span id="embeddingStatusBadge" class="badge badge-secondary">در انتظار آغاز...</span>
+        </div>
+
+        <!-- Embedding Progress Bar Container -->
+        <div style="margin-bottom: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; font-size: 0.88rem;">
+            <span id="embeddingProgressDetailText" style="font-weight: 600; color: var(--primary-800);">در حال آماده‌سازی برای تولید بردارها...</span>
+            <span id="embeddingPctText" style="font-weight: 700; color: var(--primary-700);">۰٪</span>
+          </div>
+          <div class="progress-bar-container" style="height: 10px;">
+            <div class="progress-bar-fill" id="embeddingProgressBarFill" style="width: 0%; background: linear-gradient(90deg, var(--primary-500), var(--success-500));"></div>
+          </div>
+        </div>
+
+        <!-- Embedding Metrics Grid -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 1rem;">
+          <div class="stat-metric-card">
+            <div class="stat-metric-label">کل قطعات نیازمند بردار</div>
+            <div id="embeddingTotalVal" class="stat-metric-val">۰</div>
+          </div>
+          <div class="stat-metric-card">
+            <div class="stat-metric-label">بردارسازی‌شده تا این لحظه</div>
+            <div id="embeddingCompletedVal" class="stat-metric-val" style="color: var(--success-600);">۰</div>
+          </div>
+          <div class="stat-metric-card">
+            <div class="stat-metric-label">درصد پیشرفت بردارسازی</div>
+            <div id="embeddingPctVal" class="stat-metric-val" style="color: var(--primary-600);">۰٪</div>
+          </div>
+          <div class="stat-metric-card">
+            <div class="stat-metric-label">مدل و ابعاد فعال</div>
+            <div id="embeddingModelVal" class="stat-metric-val" style="font-size: 0.95rem; line-height: 1.5;">gemini-embedding-001 (1536d)</div>
+          </div>
+        </div>
+      </div>
+
       <!-- Live Event Console Card -->
       <div class="card">
         <div class="card-header">
@@ -279,6 +330,80 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Knowledge Base Ingested Documents Card -->
+    <div class="card" id="kbDocumentsCard" style="margin-top: 2rem;">
+      <div class="card-header" style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+          <h2 class="card-title">
+            <span>📚</span>
+            <span>اسناد و محتوای موجود در پایگاه دانش حقوقی</span>
+          </h2>
+          <p style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+            مشاهده وضعیت قطعه‌بندی (Chunking)، درصد سلامت و پوشش بردارسازی معنایی (Embedding) اسناد، و امکان تولید/بازتولید بردارها
+          </p>
+        </div>
+        <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center;">
+          <button type="button" id="embedAllBtn" class="btn btn-primary" style="font-size: 0.82rem; padding: 0.4rem 0.85rem;">
+            <span>⚡ تولید بردار برای همه قطعات بدون بردار</span>
+          </button>
+          <button type="button" id="seedKbBtn" class="btn btn-outline" style="font-size: 0.82rem; padding: 0.4rem 0.85rem;">
+            <span>📥 بارگذاری قوانین مرجع (Seed)</span>
+          </button>
+          <button type="button" id="refreshKbBtn" class="btn btn-outline" style="font-size: 0.82rem; padding: 0.4rem 0.85rem;">
+            <span>🔄 تازه‌سازی</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- KB Summary Metrics Bar -->
+      <div style="display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+        <div class="stat-metric-card">
+          <div class="stat-metric-label">تعداد کل اسناد</div>
+          <div id="kbTotalDocs" class="stat-metric-val">-</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-metric-label">مجموع کل قطعات (چانک‌ها)</div>
+          <div id="kbTotalChunks" class="stat-metric-val">-</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-metric-label">قطعات دارای بردار معنایی</div>
+          <div id="kbEmbeddedChunks" class="stat-metric-val" style="color: var(--success-600);">-</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-metric-label">قطعات فاقد بردار (نیاز به پردازش)</div>
+          <div id="kbUnembeddedChunks" class="stat-metric-val" style="color: var(--warning-500);">-</div>
+        </div>
+        <div class="stat-metric-card">
+          <div class="stat-metric-label">درصد کل سلامت و پوشش برداری</div>
+          <div id="kbCoveragePct" class="stat-metric-val" style="color: var(--primary-600);">-</div>
+        </div>
+      </div>
+
+      <!-- Documents Data Table -->
+      <div class="table-responsive">
+        <table class="data-table" id="kbDocumentsTable">
+          <thead>
+            <tr>
+              <th>عنوان سند و مرجع</th>
+              <th>نوع سند</th>
+              <th>تاریخ ثبت</th>
+              <th>کل قطعات</th>
+              <th>قطعات برداردار</th>
+              <th>وضعیت و درصد پوشش برداری</th>
+              <th style="text-align: center;">عملیات</th>
+            </tr>
+          </thead>
+          <tbody id="kbDocumentsTableBody">
+            <tr>
+              <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+                در حال بارگذاری اطلاعات پایگاه دانش...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
   </main>

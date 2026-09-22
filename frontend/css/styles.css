@@ -819,3 +819,99 @@ a:hover {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ==========================================================================
+   Data Table & Knowledge Base Inspection Styles
+   ========================================================================== */
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.9rem;
+  text-align: right;
+}
+
+.data-table th {
+  background-color: #f1f5f9;
+  color: var(--primary-900);
+  font-weight: 700;
+  padding: 0.75rem 1rem;
+  border-bottom: 2px solid var(--surface-border);
+  white-space: nowrap;
+}
+
+.data-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--surface-border);
+  vertical-align: middle;
+  color: var(--text-main);
+  background-color: #ffffff;
+  transition: var(--transition);
+}
+
+.data-table tr:hover td {
+  background-color: var(--primary-50);
+}
+
+.mini-progress-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 130px;
+}
+
+.mini-progress-bar {
+  height: 7px;
+  background-color: #e2e8f0;
+  border-radius: var(--radius-full);
+  overflow: hidden;
+  position: relative;
+}
+
+.mini-progress-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+.mini-progress-fill.success {
+  background-color: var(--success-500);
+}
+
+.mini-progress-fill.warning {
+  background-color: var(--warning-500);
+}
+
+.mini-progress-fill.danger {
+  background-color: var(--danger-500);
+}
+
+.stat-metric-card {
+  background-color: var(--surface-bg);
+  padding: 0.9rem 1.1rem;
+  border-radius: var(--radius-md);
+  text-align: center;
+  border: 1px solid var(--surface-border);
+  flex: 1;
+  min-width: 140px;
+}
+
+.stat-metric-label {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-bottom: 0.25rem;
+}
+
+.stat-metric-val {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--primary-900);
+}
+

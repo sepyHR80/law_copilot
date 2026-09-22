@@ -184,3 +184,52 @@ class TestPipelineProcessingSSE:
         error_ev = next((d for _, d in events if d.get("status") == "error"), None)
         assert error_ev is not None
         assert "پشتیبانی نمی‌شود" in error_ev["message"]
+
+    def test_process_txt_document_pipeline_with_embedding(self, client: TestClient):
+        """Verify pipeline emits embedding stage started, in_progress, and completed events."""
+        from unittest.mock import AsyncMock, patch
+
+        sample_txt = (
+            "ماده ۱ - قوانین باید در سراسر قلمرو جمهوری اسلامی ایران رعایت گردند.\n\n"
+            "ماده ۲ - اموال غیرمنقول شامل زمین و بنا می‌باشد."
+        ).encode("utf-8")
+
+        with patch("app.core.config.get_settings") as mock_settings, \
+             patch("app.infrastructure.embeddings.openai_provider.OpenAIEmbeddingProvider") as mock_provider_cls:
+
+            mock_s = mock_settings.return_value
+            mock_s.embedding_api_key = "valid-active-key"
+            mock_s.embedding_endpoint = "https://api.openai.com/v1"
+            mock_s.embedding_model = "text-embedding-3-small"
+            mock_s.embedding_dimension = 1536
+            mock_s.embedding_batch_size = 5
+
+            mock_instance = mock_provider_cls.return_value
+            mock_instance.embed_texts = AsyncMock(side_effect=lambda texts: [[0.05] * 1536 for _ in texts])
+
+            response = client.post(
+                "/api/v1/pipeline/process",
+                files={"file": ("sample_statute.txt", sample_txt, "text/plain")},
+                data={
+                    "title": "قانون آزمایشی",
+                    "document_type": "law",
+                    "knowledge_type": "factual",
+                    "source": "مجلس",
+                },
+            )
+
+            assert response.status_code == 200
+            events = parse_sse_events(response.text)
+            embedding_events = [d for _, d in events if d.get("stage") == "embedding"]
+            assert len(embedding_events) >= 2
+
+            started_ev = next((d for d in embedding_events if d.get("status") == "started"), None)
+            assert started_ev is not None
+            assert started_ev["total_to_embed"] >= 1
+            assert started_ev["embedded_so_far"] == 0
+
+            completed_ev = next((d for d in embedding_events if d.get("status") == "completed"), None)
+            assert completed_ev is not None
+            assert completed_ev["percentage"] == 100.0
+            assert completed_ev["embedded_so_far"] == completed_ev["total_to_embed"]
+

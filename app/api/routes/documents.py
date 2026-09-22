@@ -213,3 +213,211 @@ async def trigger_seed_legal_corpus():
         }
     except Exception as exc:
         raise HTTPException(status_code=500, detail=f"Failed to seed legal corpus: {exc}")
+
+
+@router.post("/{document_id}/embed")
+async def embed_document_chunks(
+    document_id: str,
+    db: Session = Depends(get_db),
+):
+    """Generate embeddings for any unembedded chunks of a specific document."""
+    from uuid import UUID
+    from app.core.config import get_settings
+    from app.infrastructure.db.models.document import Document, DocumentChunk
+    from app.infrastructure.embeddings.openai_provider import OpenAIEmbeddingProvider
+
+    try:
+        doc_uuid = UUID(document_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="شناسه سند نامعتبر است.")
+
+    doc = db.query(Document).filter(Document.id == doc_uuid).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="سند مورد نظر یافت نشد.")
+
+    # Find all chunks belonging to this document's versions
+    version_ids = [v.id for v in doc.versions]
+    if not version_ids:
+        return {
+            "status": "empty",
+            "document_id": str(doc.id),
+            "title": doc.title,
+            "newly_embedded": 0,
+            "total_chunks": 0,
+            "embedded_chunks": 0,
+            "coverage_pct": 0.0,
+            "message": "هیچ نسخه‌ای برای این سند ثبت نشده است.",
+        }
+
+    total_chunks = (
+        db.query(DocumentChunk)
+        .filter(DocumentChunk.document_version_id.in_(version_ids))
+        .count()
+    )
+
+    unembedded_chunks = (
+        db.query(DocumentChunk)
+        .filter(
+            DocumentChunk.document_version_id.in_(version_ids),
+            DocumentChunk.embedding.is_(None),
+        )
+        .all()
+    )
+
+    if not unembedded_chunks:
+        embedded_count = (
+            db.query(DocumentChunk)
+            .filter(
+                DocumentChunk.document_version_id.in_(version_ids),
+                DocumentChunk.embedding.is_not(None),
+            )
+            .count()
+        )
+        return {
+            "status": "already_embedded",
+            "document_id": str(doc.id),
+            "title": doc.title,
+            "newly_embedded": 0,
+            "total_chunks": total_chunks,
+            "embedded_chunks": embedded_count,
+            "coverage_pct": 100.0 if total_chunks > 0 else 0.0,
+            "message": "تمامی قطعات این سند از پیش دارای بردار معنایی هستند.",
+        }
+
+    settings = get_settings()
+    if not settings.embedding_api_key or settings.embedding_api_key == "test-key":
+        raise HTTPException(
+            status_code=400,
+            detail="کلید دسترسی سرویس بردارسازی (EMBEDDING_API_KEY) در سرور پیکربندی نشده است.",
+        )
+
+    try:
+        provider = OpenAIEmbeddingProvider(
+            endpoint=settings.embedding_endpoint,
+            api_key=settings.embedding_api_key,
+            model=settings.embedding_model,
+            expected_dimension=settings.embedding_dimension,
+            batch_size=settings.embedding_batch_size,
+        )
+
+        batch_size = max(1, min(settings.embedding_batch_size, 10))
+        newly_count = 0
+        for i in range(0, len(unembedded_chunks), batch_size):
+            batch = unembedded_chunks[i : i + batch_size]
+            texts = [c.content for c in batch]
+            embeddings = await provider.embed_texts(texts)
+            for c, emb in zip(batch, embeddings):
+                c.embedding = emb
+                newly_count += 1
+            db.commit()
+
+        new_embedded_count = (
+            db.query(DocumentChunk)
+            .filter(
+                DocumentChunk.document_version_id.in_(version_ids),
+                DocumentChunk.embedding.is_not(None),
+            )
+            .count()
+        )
+        coverage_pct = (
+            round((new_embedded_count / total_chunks) * 100, 2)
+            if total_chunks > 0
+            else 0.0
+        )
+
+        return {
+            "status": "success",
+            "document_id": str(doc.id),
+            "title": doc.title,
+            "newly_embedded": newly_count,
+            "total_chunks": total_chunks,
+            "embedded_chunks": new_embedded_count,
+            "coverage_pct": coverage_pct,
+            "message": f"{newly_count} قطعه از سند '{doc.title}' با موفقیت بردارسازی شد ({coverage_pct}٪ پوشش کامل).",
+        }
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"خطا در تولید بردار معنایی: {exc}",
+        )
+
+
+@router.post("/embed-all")
+async def embed_all_unembedded_chunks(
+    db: Session = Depends(get_db),
+):
+    """Generate embeddings for all unembedded chunks across all documents."""
+    from app.core.config import get_settings
+    from app.infrastructure.db.models.document import DocumentChunk
+    from app.infrastructure.embeddings.openai_provider import OpenAIEmbeddingProvider
+
+    total_chunks = db.query(DocumentChunk).count()
+    unembedded_chunks = (
+        db.query(DocumentChunk)
+        .filter(DocumentChunk.embedding.is_(None))
+        .all()
+    )
+
+    if not unembedded_chunks:
+        return {
+            "status": "already_embedded",
+            "newly_embedded": 0,
+            "total_chunks": total_chunks,
+            "embedded_chunks": total_chunks,
+            "coverage_pct": 100.0 if total_chunks > 0 else 0.0,
+            "message": "تمامی قطعات موجود در پایگاه دانش از پیش دارای بردار معنایی هستند.",
+        }
+
+    settings = get_settings()
+    if not settings.embedding_api_key or settings.embedding_api_key == "test-key":
+        raise HTTPException(
+            status_code=400,
+            detail="کلید دسترسی سرویس بردارسازی (EMBEDDING_API_KEY) در سرور پیکربندی نشده است.",
+        )
+
+    try:
+        provider = OpenAIEmbeddingProvider(
+            endpoint=settings.embedding_endpoint,
+            api_key=settings.embedding_api_key,
+            model=settings.embedding_model,
+            expected_dimension=settings.embedding_dimension,
+            batch_size=settings.embedding_batch_size,
+        )
+
+        batch_size = max(1, min(settings.embedding_batch_size, 10))
+        newly_count = 0
+        for i in range(0, len(unembedded_chunks), batch_size):
+            batch = unembedded_chunks[i : i + batch_size]
+            texts = [c.content for c in batch]
+            embeddings = await provider.embed_texts(texts)
+            for c, emb in zip(batch, embeddings):
+                c.embedding = emb
+                newly_count += 1
+            db.commit()
+
+        new_embedded_count = (
+            db.query(DocumentChunk)
+            .filter(DocumentChunk.embedding.is_not(None))
+            .count()
+        )
+        coverage_pct = (
+            round((new_embedded_count / total_chunks) * 100, 2)
+            if total_chunks > 0
+            else 0.0
+        )
+
+        return {
+            "status": "success",
+            "newly_embedded": newly_count,
+            "total_chunks": total_chunks,
+            "embedded_chunks": new_embedded_count,
+            "coverage_pct": coverage_pct,
+            "message": f"{newly_count} قطعه در کل پایگاه دانش با موفقیت بردارسازی شد (پوشش کل: {coverage_pct}٪).",
+        }
+    except Exception as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"خطا در تولید بردار معنایی سراسری: {exc}",
+        )

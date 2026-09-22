@@ -91,3 +91,128 @@ def test_documents_stats_with_data():
         assert list_data[0]["title"] == "قانون مجازات اسلامی"
     finally:
         app.dependency_overrides.clear()
+
+
+def test_embed_single_document_already_embedded():
+    """Test /embed endpoint when all chunks already have embeddings."""
+    doc_id = uuid4()
+    ver_id = uuid4()
+    mock_doc = MagicMock()
+    mock_doc.id = doc_id
+    mock_doc.title = "قانون مدنی"
+    mock_ver = MagicMock()
+    mock_ver.id = ver_id
+    mock_doc.versions = [mock_ver]
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_doc
+    # total_chunks = 5
+    mock_db.query.return_value.filter.return_value.count.side_effect = [5, 5]
+    # unembedded_chunks = []
+    mock_db.query.return_value.filter.return_value.all.return_value = []
+
+    app.dependency_overrides[get_db] = lambda: mock_db
+    client = TestClient(app)
+    try:
+        res = client.post(f"/api/v1/documents/{doc_id}/embed")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "already_embedded"
+        assert data["coverage_pct"] == 100.0
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_embed_single_document_success():
+    """Test /embed endpoint generating embeddings for unembedded chunks."""
+    from unittest.mock import AsyncMock, patch
+
+    doc_id = uuid4()
+    ver_id = uuid4()
+    mock_doc = MagicMock()
+    mock_doc.id = doc_id
+    mock_doc.title = "قانون مدنی"
+    mock_ver = MagicMock()
+    mock_ver.id = ver_id
+    mock_doc.versions = [mock_ver]
+
+    mock_chunk = MagicMock()
+    mock_chunk.content = "ماده ۱ قانون مدنی"
+    mock_chunk.embedding = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.filter.return_value.first.return_value = mock_doc
+    # total_chunks = 1, new_embedded_count = 1
+    mock_db.query.return_value.filter.return_value.count.side_effect = [1, 1]
+    # unembedded_chunks = [mock_chunk]
+    mock_db.query.return_value.filter.return_value.all.return_value = [mock_chunk]
+
+    with patch("app.core.config.get_settings") as mock_settings, \
+         patch("app.infrastructure.embeddings.openai_provider.OpenAIEmbeddingProvider") as mock_provider_cls:
+
+        mock_s = MagicMock()
+        mock_s.embedding_api_key = "valid-key"
+        mock_s.embedding_endpoint = "https://api.openai.com/v1"
+        mock_s.embedding_model = "text-embedding-3-small"
+        mock_s.embedding_dimension = 1536
+        mock_s.embedding_batch_size = 10
+        mock_settings.return_value = mock_s
+
+        mock_instance = MagicMock()
+        mock_instance.embed_texts = AsyncMock(return_value=[[0.1] * 1536])
+        mock_provider_cls.return_value = mock_instance
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        client = TestClient(app)
+        try:
+            res = client.post(f"/api/v1/documents/{doc_id}/embed")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "success"
+            assert data["newly_embedded"] == 1
+            assert data["coverage_pct"] == 100.0
+            assert mock_chunk.embedding == [0.1] * 1536
+        finally:
+            app.dependency_overrides.clear()
+
+
+def test_embed_all_documents_success():
+    """Test /embed-all endpoint generating embeddings for all unembedded chunks."""
+    from unittest.mock import AsyncMock, patch
+
+    mock_chunk = MagicMock()
+    mock_chunk.content = "ماده ۱۰ قانون مدنی"
+    mock_chunk.embedding = None
+
+    mock_db = MagicMock()
+    mock_db.query.return_value.count.return_value = 1
+    mock_db.query.return_value.filter.return_value.all.return_value = [mock_chunk]
+    mock_db.query.return_value.filter.return_value.count.return_value = 1
+
+    with patch("app.core.config.get_settings") as mock_settings, \
+         patch("app.infrastructure.embeddings.openai_provider.OpenAIEmbeddingProvider") as mock_provider_cls:
+
+        mock_s = MagicMock()
+        mock_s.embedding_api_key = "valid-key"
+        mock_s.embedding_endpoint = "https://api.openai.com/v1"
+        mock_s.embedding_model = "text-embedding-3-small"
+        mock_s.embedding_dimension = 1536
+        mock_s.embedding_batch_size = 10
+        mock_settings.return_value = mock_s
+
+        mock_instance = MagicMock()
+        mock_instance.embed_texts = AsyncMock(return_value=[[0.2] * 1536])
+        mock_provider_cls.return_value = mock_instance
+
+        app.dependency_overrides[get_db] = lambda: mock_db
+        client = TestClient(app)
+        try:
+            res = client.post("/api/v1/documents/embed-all")
+            assert res.status_code == 200
+            data = res.json()
+            assert data["status"] == "success"
+            assert data["newly_embedded"] == 1
+            assert mock_chunk.embedding == [0.2] * 1536
+        finally:
+            app.dependency_overrides.clear()
+

@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("stepNode3"),
     document.getElementById("stepNode4"),
     document.getElementById("stepNode5"),
+    document.getElementById("stepNode6"),
   ];
 
   // Results & Extraction Elements
@@ -46,6 +47,28 @@ document.addEventListener("DOMContentLoaded", () => {
   const parentChunksStat = document.getElementById("parentChunksStat");
   const childChunksStat = document.getElementById("childChunksStat");
   const sampleChunksList = document.getElementById("sampleChunksList");
+
+  // Embedding Elements
+  const embeddingCard = document.getElementById("embeddingCard");
+  const embeddingStatusBadge = document.getElementById("embeddingStatusBadge");
+  const embeddingProgressDetailText = document.getElementById("embeddingProgressDetailText");
+  const embeddingPctText = document.getElementById("embeddingPctText");
+  const embeddingProgressBarFill = document.getElementById("embeddingProgressBarFill");
+  const embeddingTotalVal = document.getElementById("embeddingTotalVal");
+  const embeddingCompletedVal = document.getElementById("embeddingCompletedVal");
+  const embeddingPctVal = document.getElementById("embeddingPctVal");
+  const embeddingModelVal = document.getElementById("embeddingModelVal");
+
+  // Knowledge Base Inspection Elements
+  const kbTotalDocs = document.getElementById("kbTotalDocs");
+  const kbTotalChunks = document.getElementById("kbTotalChunks");
+  const kbEmbeddedChunks = document.getElementById("kbEmbeddedChunks");
+  const kbUnembeddedChunks = document.getElementById("kbUnembeddedChunks");
+  const kbCoveragePct = document.getElementById("kbCoveragePct");
+  const kbDocumentsTableBody = document.getElementById("kbDocumentsTableBody");
+  const embedAllBtn = document.getElementById("embedAllBtn");
+  const seedKbBtn = document.getElementById("seedKbBtn");
+  const refreshKbBtn = document.getElementById("refreshKbBtn");
 
   // Console & Next Action Elements
   const eventLogConsole = document.getElementById("eventLogConsole");
@@ -105,6 +128,16 @@ document.addEventListener("DOMContentLoaded", () => {
     updateProgress(0, "آماده برای بارگذاری سند جدید...");
     resetStepper();
     sampleChunksList.innerHTML = '<div style="text-align: center; padding: 2rem; color: var(--text-muted);">در حال انجام عملیات قطعه‌بندی...</div>';
+    if (embeddingProgressBarFill) embeddingProgressBarFill.style.width = "0%";
+    if (embeddingProgressDetailText) embeddingProgressDetailText.innerText = "در حال آماده‌سازی برای تولید بردارها...";
+    if (embeddingPctText) embeddingPctText.innerText = "۰٪";
+    if (embeddingTotalVal) embeddingTotalVal.innerText = "۰";
+    if (embeddingCompletedVal) embeddingCompletedVal.innerText = "۰";
+    if (embeddingPctVal) embeddingPctVal.innerText = "۰٪";
+    if (embeddingStatusBadge) {
+      embeddingStatusBadge.className = "badge badge-secondary";
+      embeddingStatusBadge.innerText = "در انتظار آغاز...";
+    }
     logEvent("info", "فرم بازنشانی شد.");
   }
 
@@ -136,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function setStepState(stepIndex, state) {
-    // stepIndex: 0..4
+    // stepIndex: 0..5
     for (let i = 0; i < stepIndex; i++) {
       stepNodes[i].classList.remove("active");
       stepNodes[i].classList.add("completed");
@@ -149,8 +182,8 @@ document.addEventListener("DOMContentLoaded", () => {
       stepNodes[stepIndex].classList.add("completed");
     }
 
-    // Update stepper line width
-    const percentage = Math.min(100, Math.max(0, (stepIndex / 4) * 100));
+    // Update stepper line width (5 intervals for 6 nodes)
+    const percentage = Math.min(100, Math.max(0, (stepIndex / 5) * 100));
     stepperProgressLine.style.width = `${percentage}%`;
   }
 
@@ -384,14 +417,52 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         break;
 
+      case "embedding":
+        setStepState(4, "active");
+        const totalToEmbed = data.total_to_embed || 0;
+        const embeddedSoFar = data.embedded_so_far || 0;
+        const embPct = data.percentage !== undefined ? data.percentage : 0;
+
+        if (embeddingTotalVal) embeddingTotalVal.innerText = totalToEmbed.toLocaleString("fa-IR");
+        if (embeddingCompletedVal) embeddingCompletedVal.innerText = embeddedSoFar.toLocaleString("fa-IR");
+        if (embeddingPctVal) embeddingPctVal.innerText = `${embPct.toLocaleString("fa-IR")}%`;
+        if (embeddingPctText) embeddingPctText.innerText = `${embPct.toLocaleString("fa-IR")}%`;
+        if (embeddingProgressBarFill) embeddingProgressBarFill.style.width = `${embPct}%`;
+
+        if (data.status === "started") {
+          embeddingStatusBadge.className = "badge badge-primary";
+          embeddingStatusBadge.innerText = "آماده‌سازی بردارسازی...";
+          embeddingProgressDetailText.innerText = `در حال اتصال به مدل و بردارسازی ${totalToEmbed.toLocaleString("fa-IR")} قطعه...`;
+          logEvent("info", `[گام ۵] آغاز بردارسازی معنایی برای مجموعاً ${totalToEmbed} قطعه...`);
+        } else if (data.status === "in_progress") {
+          embeddingStatusBadge.className = "badge badge-primary";
+          embeddingStatusBadge.innerText = `در حال تولید (${embPct}٪)`;
+          embeddingProgressDetailText.innerText = `تولید بردار معنایی: ${embeddedSoFar.toLocaleString("fa-IR")} از ${totalToEmbed.toLocaleString("fa-IR")} قطعه بردارسازی شد (${embPct}٪)...`;
+          logEvent("info", `[گام ۵] پیشرفت بردارسازی: ${embeddedSoFar} از ${totalToEmbed} قطعه (${embPct}٪)`);
+        } else if (data.status === "completed") {
+          setStepState(4, "completed");
+          setStepState(5, "active");
+          embeddingStatusBadge.className = "badge badge-success";
+          embeddingStatusBadge.innerText = "بردارسازی ۱۰۰٪ کامل شد";
+          embeddingProgressDetailText.innerText = `تمامی ${totalToEmbed.toLocaleString("fa-IR")} قطعه با موفقیت بردارسازی و در پایگاه داده ایندکس شدند.`;
+          logEvent("success", `[گام ۵] بردارسازی پایان یافت: ${totalToEmbed} بردار با موفقیت ایندکس شدند.`);
+        } else if (data.status === "warning") {
+          embeddingStatusBadge.className = "badge badge-gold";
+          embeddingStatusBadge.innerText = "بردارسازی متوقف/ناقص";
+          embeddingProgressDetailText.innerText = data.message || "خطا در تولید بردار";
+          logEvent("warn", `[گام ۵] هشدار بردارسازی: ${data.message}`);
+        }
+        break;
+
       case "complete":
-        setStepState(4, "completed");
+        setStepState(5, "completed");
         updateProgress(100, "پردازش سند و آماده‌سازی پایگاه دانش با موفقیت تکمیل شد!");
-        logEvent("success", `[گام ۵] سند '${data.title}' با موفقیت در پایگاه دانش نمایه‌سازی شد.`);
+        logEvent("success", `[گام ۶] سند '${data.title}' با موفقیت در پایگاه دانش نمایه‌سازی شد.`);
 
         submitBtn.disabled = false;
         submitBtn.innerHTML = `<span>شروع بارگذاری و پردازش</span> <span>⚡</span>`;
         nextActionCard.style.display = "block";
+        loadExistingDocuments();
         break;
     }
   }
@@ -482,4 +553,232 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
   }
+
+  // --- Knowledge Base Inspection & Management ---
+  async function loadExistingDocuments() {
+    if (!kbDocumentsTableBody) return;
+
+    try {
+      const response = await fetch("/api/v1/documents/stats");
+      if (!response.ok) {
+        throw new Error(`خطای دریافت آمار: کد ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      if (kbTotalDocs) kbTotalDocs.innerText = (data.total_documents || 0).toLocaleString("fa-IR");
+      if (kbTotalChunks) kbTotalChunks.innerText = (data.total_chunks || 0).toLocaleString("fa-IR");
+      if (kbEmbeddedChunks) kbEmbeddedChunks.innerText = (data.embedded_chunks || 0).toLocaleString("fa-IR");
+      if (kbUnembeddedChunks) kbUnembeddedChunks.innerText = (data.unembedded_chunks || 0).toLocaleString("fa-IR");
+      if (kbCoveragePct) kbCoveragePct.innerText = `${(data.embedding_coverage_pct || 0).toLocaleString("fa-IR")}%`;
+
+      if (data.embedding_config && data.embedding_config.model && embeddingModelVal) {
+        embeddingModelVal.innerText = `${data.embedding_config.model} (${data.embedding_config.dimension || 1536}d)`;
+      }
+
+      renderDocumentsTable(data.documents || []);
+    } catch (err) {
+      console.error("Failed to load documents stats:", err);
+      if (kbDocumentsTableBody) {
+        kbDocumentsTableBody.innerHTML = `
+          <tr>
+            <td colspan="7" style="text-align: center; padding: 2rem; color: var(--danger-600);">
+              خطا در دریافت لیست اسناد پایگاه دانش: ${escapeHtml(err.message)}
+            </td>
+          </tr>
+        `;
+      }
+    }
+  }
+
+  function renderDocumentsTable(docs) {
+    if (!kbDocumentsTableBody) return;
+
+    if (!docs || docs.length === 0) {
+      kbDocumentsTableBody.innerHTML = `
+        <tr>
+          <td colspan="7" style="text-align: center; padding: 2rem; color: var(--text-muted);">
+            هنوز سندی در پایگاه دانش ثبت نشده است. با استفاده از فرم بالا یا دکمه «بارگذاری قوانین مرجع» اولین اسناد را اضافه کنید.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    const docTypeLabels = {
+      law: "قانون مصوب مجلس",
+      regulation: "آیین‌نامه اجرایی",
+      directive: "بخشنامه / دستورالعمل",
+      court_verdict: "رأی وحدت رویه",
+      contract: "نمونه قرارداد",
+      pleading: "دادخواست / شکواییه",
+      legal_opinion: "نظریه مشورتی",
+    };
+
+    let html = "";
+    docs.forEach((doc) => {
+      const covPct = doc.coverage_pct !== undefined ? doc.coverage_pct : 0;
+      let badgeClass = "badge-gold";
+      let statusLabel = `${covPct.toLocaleString("fa-IR")}% ناقص`;
+      let fillClass = "warning";
+
+      if (covPct >= 99.9) {
+        badgeClass = "badge-success";
+        statusLabel = "۱۰۰٪ کامل";
+        fillClass = "success";
+      } else if (covPct === 0) {
+        badgeClass = "badge-danger";
+        statusLabel = "۰٪ فاقد بردار";
+        fillClass = "danger";
+      }
+
+      const typeLabel = docTypeLabels[doc.document_type] || doc.document_type || "سند حقوقی";
+      const createdDate = doc.created_at ? new Date(doc.created_at).toLocaleDateString("fa-IR") : "-";
+
+      html += `
+        <tr>
+          <td>
+            <div style="font-weight: 600; color: var(--primary-900);">${escapeHtml(doc.title)}</div>
+            <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 0.15rem;">منبع: ${escapeHtml(doc.source || "-")}</div>
+          </td>
+          <td>
+            <span class="badge badge-secondary" style="font-size: 0.78rem;">${typeLabel}</span>
+          </td>
+          <td style="font-size: 0.85rem; color: var(--text-muted);">${createdDate}</td>
+          <td style="font-weight: 600;">${(doc.total_chunks || 0).toLocaleString("fa-IR")}</td>
+          <td style="font-weight: 600; color: var(--success-600);">${(doc.embedded_chunks || 0).toLocaleString("fa-IR")}</td>
+          <td>
+            <div class="mini-progress-wrapper">
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span class="badge ${badgeClass}" style="font-size: 0.75rem; padding: 0.15rem 0.5rem;">${statusLabel}</span>
+              </div>
+              <div class="mini-progress-bar">
+                <div class="mini-progress-fill ${fillClass}" style="width: ${Math.min(100, covPct)}%;"></div>
+              </div>
+            </div>
+          </td>
+          <td style="text-align: center;">
+            <div style="display: inline-flex; gap: 0.4rem; justify-content: center;">
+              <button type="button" class="btn btn-outline embed-single-btn" data-id="${doc.id}" data-title="${escapeHtml(doc.title)}" style="padding: 0.25rem 0.6rem; font-size: 0.75rem;">
+                ${covPct >= 99.9 ? '🔄 بازتولید' : '⚡ تولید بردار'}
+              </button>
+              <button type="button" class="btn btn-outline delete-single-btn" data-id="${doc.id}" data-title="${escapeHtml(doc.title)}" style="padding: 0.25rem 0.6rem; font-size: 0.75rem; color: var(--danger-600); border-color: var(--danger-500);">
+                🗑️
+              </button>
+            </div>
+          </td>
+        </tr>
+      `;
+    });
+
+    kbDocumentsTableBody.innerHTML = html;
+
+    // Wire individual embed buttons
+    document.querySelectorAll(".embed-single-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const docId = btn.getAttribute("data-id");
+        const docTitle = btn.getAttribute("data-title");
+        btn.disabled = true;
+        const originalText = btn.innerHTML;
+        btn.innerHTML = `<span>در حال پردازش...</span>`;
+
+        try {
+          const res = await fetch(`/api/v1/documents/${docId}/embed`, { method: "POST" });
+          const resData = await res.json();
+          if (!res.ok) {
+            alert(`خطا در تولید بردار: ${resData.detail || "خطای ناشناخته"}`);
+          } else {
+            alert(resData.message || `بردارسازی برای سند '${docTitle}' با موفقیت انجام شد.`);
+          }
+        } catch (err) {
+          alert(`خطا در ارتباط با سرور: ${err.message}`);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+          loadExistingDocuments();
+        }
+      });
+    });
+
+    // Wire individual delete buttons
+    document.querySelectorAll(".delete-single-btn").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const docId = btn.getAttribute("data-id");
+        const docTitle = btn.getAttribute("data-title");
+        if (!confirm(`آیا از حذف سند '${docTitle}' و کلیه قطعات و بردارهای آن اطمینان دارید؟`)) {
+          return;
+        }
+
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/v1/documents/${docId}`, { method: "DELETE" });
+          if (!res.ok) {
+            alert(`خطا در حذف سند: وضعیت ${res.status}`);
+          }
+        } catch (err) {
+          alert(`خطا در ارتباط با سرور: ${err.message}`);
+        } finally {
+          loadExistingDocuments();
+        }
+      });
+    });
+  }
+
+  // --- Wire Knowledge Base Toolbar Actions ---
+  if (embedAllBtn) {
+    embedAllBtn.addEventListener("click", async () => {
+      embedAllBtn.disabled = true;
+      const originalText = embedAllBtn.innerHTML;
+      embedAllBtn.innerHTML = `<span>در حال تولید بردارها...</span>`;
+
+      try {
+        const res = await fetch("/api/v1/documents/embed-all", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(`خطا در تولید بردار سراسری: ${data.detail || "خطای ناشناخته"}`);
+        } else {
+          alert(data.message || "عملیات بردارسازی سراسری با موفقیت انجام شد.");
+        }
+      } catch (err) {
+        alert(`خطا در ارتباط با سرور: ${err.message}`);
+      } finally {
+        embedAllBtn.disabled = false;
+        embedAllBtn.innerHTML = originalText;
+        loadExistingDocuments();
+      }
+    });
+  }
+
+  if (seedKbBtn) {
+    seedKbBtn.addEventListener("click", async () => {
+      seedKbBtn.disabled = true;
+      const originalText = seedKbBtn.innerHTML;
+      seedKbBtn.innerHTML = `<span>در حال بارگذاری قوانین...</span>`;
+
+      try {
+        const res = await fetch("/api/v1/documents/seed", { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) {
+          alert(`خطا در بارگذاری قوانین مرجع: ${data.detail || "خطای ناشناخته"}`);
+        } else {
+          alert(data.message || "قوانین مرجع با موفقیت بارگذاری و ایندکس شدند.");
+        }
+      } catch (err) {
+        alert(`خطا در ارتباط با سرور: ${err.message}`);
+      } finally {
+        seedKbBtn.disabled = false;
+        seedKbBtn.innerHTML = originalText;
+        loadExistingDocuments();
+      }
+    });
+  }
+
+  if (refreshKbBtn) {
+    refreshKbBtn.addEventListener("click", () => {
+      loadExistingDocuments();
+    });
+  }
+
+  // Initial Load of Knowledge Base Documents
+  loadExistingDocuments();
 });
