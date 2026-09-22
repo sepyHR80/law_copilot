@@ -27,6 +27,30 @@ class FakeLLMProvider(LLMProvider):
 
     async def generate(self, request: LLMRequest) -> LLMResponse:
         """Generate a deterministic response and record request in history."""
+        # Automatic handling for intent/category classification requests during agent tests
+        is_intent_query = any(
+            "تحلیل قصد" in (m.content or "") or "دسته‌بندی موضوعی" in (m.content or "")
+            for m in request.messages
+        )
+        if is_intent_query:
+            user_msg = request.messages[-1].content.lower() if request.messages else ""
+            if any(w in user_msg for w in ["hello", "سلام", "درود", "hi", "hey"]):
+                intent_val = "general"
+                cat_val = "گفتگوی عمومی و راهنمایی"
+            elif any(w in user_msg for w in ["draft", "تنظیم", "قرارداد", "دادخواست"]):
+                intent_val = "document_generation"
+                cat_val = "تنظیم و تدوین اسناد حقوقی"
+            else:
+                intent_val = "legal_qa"
+                cat_val = "حقوق مدنی و قراردادها"
+            fake_json = json.dumps({"intent": intent_val, "category": cat_val})
+            return LLMResponse(
+                content=fake_json,
+                model="fake-model",
+                usage=LLMUsage(prompt_tokens=5, completion_tokens=5, total_tokens=10),
+                finish_reason="stop",
+            )
+
         self.call_history.append(request)
 
         if self._custom_handler:

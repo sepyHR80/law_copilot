@@ -59,7 +59,7 @@ def build_legal_agent_graph(
 
     # Register nodes
     workflow.add_node("load_memory", create_load_memory_node(memory_service))
-    workflow.add_node("analyze_intent", create_analyze_intent_node())
+    workflow.add_node("analyze_intent", create_analyze_intent_node(llm_service=llm_service))
     workflow.add_node("handle_general", create_handle_general_node())
     workflow.add_node("prepare_query", create_prepare_query_node())
     workflow.add_node(

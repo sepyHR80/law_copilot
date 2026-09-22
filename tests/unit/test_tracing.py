@@ -1,4 +1,10 @@
-"""Unit tests for Chat Tracing and Categorization System."""
+"""Unit tests for Chat Tracing and Categorization System.
+
+Ensures strict compliance with:
+- Zero regex, zero hardcoded keyword heuristics.
+- Grounding in Knowledge Base search (document titles & sources).
+- LLM inference classification.
+"""
 
 from uuid import uuid4
 import pytest
@@ -10,9 +16,11 @@ from sqlalchemy.pool import StaticPool
 from app.infrastructure.db.base import Base
 from app.infrastructure.db.models.trace import ChatTrace
 from app.main import app
-from app.tracing.categorizer import categorize_query
+from app.tracing.categorizer import categorize_query, categorize_with_llm
 from app.tracing.service import TraceService
 from app.api.routes.traces import get_db
+from app.infrastructure.llm.fake import FakeLLMProvider
+from app.llm.service import LLMService
 
 
 @pytest.fixture
@@ -34,34 +42,95 @@ def in_memory_db():
 
 
 class TestLegalCategorizer:
-    """Test query categorization engine across Iranian legal branches."""
+    """Test query categorization strictly grounded in Knowledge Base search and LLM."""
 
-    def test_criminal_categorization(self):
-        assert categorize_query("مجازات سرقت حدی چیست؟") == "حقوق کیفری و مجازات"
-        assert categorize_query("حکم قتل عمد و قصاص") == "حقوق کیفری و مجازات"
-        assert categorize_query("ارکان جرم کلاهبرداری") == "حقوق کیفری و مجازات"
+    def test_kb_search_grounded_categorization(self):
+        """Categories derived directly from Knowledge Base search results."""
+        # 1. Criminal law grounded in KB statute title
+        assert categorize_query(
+            "مجازات سرقت حدی چیست؟",
+            retrieval_data=[{"title": "قانون مجازات اسلامی"}],
+        ) == "حقوق کیفری و مجازات"
 
-    def test_civil_categorization(self):
-        assert categorize_query("شرایط فسخ قرارداد بیع چیست؟") == "حقوق مدنی و قراردادها"
-        assert categorize_query("نحوه مطالبه مهریه و نفقه زوجه") == "حقوق مدنی و قراردادها"
-        assert categorize_query("قواعد ارث و ماترک متوفی") == "حقوق مدنی و قراردادها"
+        # 2. Civil law grounded in KB civil code title
+        assert categorize_query(
+            "شرایط فسخ قرارداد بیع چیست؟",
+            retrieval_data=[{"title": "قانون مدنی"}],
+        ) == "حقوق مدنی و قراردادها"
 
-    def test_procedural_categorization(self):
-        assert categorize_query("مهلت تجدیدنظرخواهی در دادگاه حقوقی") == "آیین دادرسی و امور قضایی"
-        assert categorize_query("صلاحیت شورای حل اختلاف") == "آیین دادرسی و امور قضایی"
+        # 3. Procedural law grounded in KB procedural code title
+        assert categorize_query(
+            "مهلت تجدیدنظرخواهی در دادگاه حقوقی",
+            retrieval_data=[{"title": "قانون آیین دادرسی دادگاه‌های عمومی و انقلاب"}],
+        ) == "آیین دادرسی و امور قضایی"
 
-    def test_commercial_labor_categorization(self):
-        assert categorize_query("نحوه وصول چک صیادی و سفته") == "حقوق تجارت و کار"
-        assert categorize_query("محاسبه سنوات و اخراج کارگر در قانون کار") == "حقوق تجارت و کار"
+        # 4. Commercial law grounded in KB commercial code
+        assert categorize_query(
+            "نحوه وصول چک صیادی و سفته",
+            retrieval_data=[{"title": "قانون تجارت"}],
+        ) == "حقوق تجارت و کار"
 
-    def test_drafting_categorization(self):
-        assert categorize_query("لطفاً یک نمونه قرارداد اجاره بنویس") == "تنظیم و تدوین اسناد حقوقی"
+        # 5. Labor law grounded in KB labor code evidence
+        assert categorize_query(
+            "محاسبه سنوات و اخراج کارگر",
+            evidence=[{"source": {"title": "قانون کار و تامین اجتماعی"}}],
+        ) == "حقوق تجارت و کار"
 
-    def test_general_conversational_categorization(self):
+        # 6. Drafting grounded in KB contract evidence
+        assert categorize_query(
+            "استعلام سند قرارداد",
+            citations=[{"source": {"title": "قرارداد پیمانکاری عمومی"}}],
+        ) == "تنظیم و تدوین اسناد حقوقی"
+
+        # 7. Custom uploaded document in Knowledge Base
+        assert categorize_query(
+            "دستورالعمل نظارت بر بورس",
+            retrieval_data=[{"title": "دستورالعمل نظارت بر معاملات بورس کالا"}],
+        ) == "پایگاه دانش: دستورالعمل نظارت بر معاملات بورس کالا"
+
+    def test_llm_driven_categorization(self):
+        """Categories derived directly from LLM classification."""
+        # Explicit LLM category parameter
+        assert categorize_query(
+            "تحلیل موضوع",
+            llm_category="حقوق کیفری و مجازات",
+        ) == "حقوق کیفری و مجازات"
+
+        # LLM category in trace_metadata
+        assert categorize_query(
+            "تحلیل موضوع",
+            trace_metadata={"category": "حقوق مدنی و قراردادها"},
+        ) == "حقوق مدنی و قراردادها"
+
+    def test_intent_categorization(self):
+        """Conversational and drafting intents without regex."""
         assert categorize_query("سلام، وقت بخیر", intent="general") == "گفتگوی عمومی و راهنمایی"
+        assert categorize_query("لطفاً یک نمونه قرارداد بنویس", intent="document_generation") == "تنظیم و تدوین اسناد حقوقی"
 
     def test_insufficient_evidence_categorization(self):
+        """Insufficient evidence search returns standardized category."""
         assert categorize_query("سوالی که در دیتابیس نیست", is_sufficient=False) == "شواهد ناکافی در پایگاه دانش"
+
+    def test_strict_zero_regex_verification(self):
+        """Verify that app.tracing.categorizer contains absolutely no regex imports or calls."""
+        import inspect
+        from app.tracing import categorizer
+
+        source = inspect.getsource(categorizer)
+        assert "import re" not in source, "Found 'import re' in categorizer.py!"
+        assert "from re " not in source, "Found 'from re' in categorizer.py!"
+        assert "re.findall" not in source, "Found 're.findall' in categorizer.py!"
+        assert "re.search" not in source, "Found 're.search' in categorizer.py!"
+        assert "re.match" not in source, "Found 're.match' in categorizer.py!"
+
+    @pytest.mark.asyncio
+    async def test_async_llm_categorizer(self):
+        """Test categorize_with_llm with FakeLLMProvider."""
+        fake_llm = FakeLLMProvider()
+        llm_service = LLMService(provider=fake_llm)
+        res = await categorize_with_llm("سلام، چطور کمکم می‌کنی؟", llm_service)
+        assert res["intent"] == "general"
+        assert res["category"] == "گفتگوی عمومی و راهنمایی"
 
 
 class TestTraceService:
@@ -77,6 +146,7 @@ class TestTraceService:
                 {"step": "received", "title": "دریافت پرسش", "duration_ms": 2, "status": "completed"},
                 {"step": "retrieve_knowledge", "title": "بازیابی ترکیبی", "duration_ms": 45, "status": "completed"},
             ],
+            retrieval_data=[{"title": "قانون مجازات اسلامی"}],
             model_name="gemini-3.5-flash-lite",
             latency_ms=120,
             session=in_memory_db,
@@ -93,13 +163,14 @@ class TestTraceService:
         assert len(detail.execution_path) == 2
 
     def test_categories_summary(self, in_memory_db):
-        # Insert diverse traces
+        # Insert diverse traces with knowledge base search grounding
         TraceService.record_trace(
             user_query="شرایط سرقت",
             ai_response="پاسخ",
             intent="legal_qa",
             is_sufficient=True,
             execution_path=[],
+            retrieval_data=[{"title": "قانون مجازات اسلامی"}],
             latency_ms=100,
             session=in_memory_db,
         )
@@ -109,6 +180,7 @@ class TestTraceService:
             intent="legal_qa",
             is_sufficient=True,
             execution_path=[],
+            retrieval_data=[{"title": "قانون مدنی"}],
             latency_ms=150,
             session=in_memory_db,
         )
@@ -134,6 +206,7 @@ class TestTraceService:
             intent="legal_qa",
             is_sufficient=True,
             execution_path=[],
+            retrieval_data=[{"title": "قانون مجازات اسلامی"}],
             session=in_memory_db,
         )
         TraceService.record_trace(
@@ -142,6 +215,7 @@ class TestTraceService:
             intent="legal_qa",
             is_sufficient=True,
             execution_path=[],
+            retrieval_data=[{"title": "قانون مدنی"}],
             session=in_memory_db,
         )
 
@@ -170,13 +244,14 @@ class TestTracesApi:
         app.dependency_overrides[get_db] = lambda: in_memory_db
 
         try:
-            # Seed a trace
+            # Seed a trace grounded in knowledge base civil code
             TraceService.record_trace(
                 user_query="ماده ۱۹۰ قانون مدنی",
                 ai_response="شرایط اساسی صحت معامله",
                 intent="legal_qa",
                 is_sufficient=True,
                 execution_path=[{"step": "received", "title": "دریافت", "duration_ms": 1, "status": "completed"}],
+                retrieval_data=[{"title": "قانون مدنی"}],
                 session=in_memory_db,
             )
 

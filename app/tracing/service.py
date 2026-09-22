@@ -50,13 +50,18 @@ class TraceService:
         status: str = "success",
         error_message: Optional[str] = None,
         trace_metadata: Optional[Dict[str, Any]] = None,
+        category: Optional[str] = None,
         session: Optional[Session] = None,
     ) -> Optional[UUID]:
         """Record an interaction execution trace safely without blocking."""
-        category = categorize_query(
+        resolved_category = category or categorize_query(
             query=user_query,
             intent=intent,
             is_sufficient=is_sufficient,
+            retrieval_data=retrieval_data,
+            evidence=evidence,
+            citations=citations,
+            trace_metadata=trace_metadata,
         )
 
         db = session or SessionLocal()
@@ -76,7 +81,7 @@ class TraceService:
             trace_record = ChatTrace(
                 id=uuid4(),
                 conversation_id=conv_uuid,
-                category=category,
+                category=resolved_category,
                 intent=intent,
                 user_query=user_query,
                 ai_response=ai_response,
