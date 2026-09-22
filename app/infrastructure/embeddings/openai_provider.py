@@ -188,8 +188,8 @@ class OpenAIEmbeddingProvider(EmbeddingProvider):
             ) as err:
                 status_code = getattr(err, "status_code", None)
                 if attempt == 0:
-                    # Retry once after short backoff
-                    await asyncio.sleep(0.1)
+                    sleep_time = 15.0 if isinstance(err, openai.RateLimitError) or status_code == 429 else 0.5
+                    await asyncio.sleep(sleep_time)
                     continue
                 # Second failure: raise without further retry
                 raise EmbeddingProviderError(

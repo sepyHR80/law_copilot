@@ -1,7 +1,7 @@
 """Document upload API routes."""
 
 from typing import Optional
-from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.domain.documents.exceptions import (
@@ -240,9 +240,11 @@ async def trigger_seed_legal_corpus():
 @router.post("/{document_id}/embed")
 async def embed_document_chunks(
     document_id: str,
+    limit: Optional[int] = Query(None, description="حداکثر تعداد قطعات برای بردارسازی در این درخواست"),
     db: Session = Depends(get_db),
 ):
     """Generate embeddings for any unembedded chunks of a specific document."""
+    import asyncio
     from uuid import UUID
     from app.core.config import get_settings
     from app.infrastructure.db.models.document import Document, DocumentChunk
@@ -306,6 +308,9 @@ async def embed_document_chunks(
             "message": "تمامی قطعات این سند از پیش دارای بردار معنایی هستند.",
         }
 
+    if limit and limit > 0:
+        unembedded_chunks = unembedded_chunks[:limit]
+
     settings = get_settings()
     if not settings.embedding_api_key or settings.embedding_api_key == "test-key":
         raise HTTPException(
@@ -322,7 +327,7 @@ async def embed_document_chunks(
             batch_size=settings.embedding_batch_size,
         )
 
-        batch_size = max(1, min(settings.embedding_batch_size, 10))
+        batch_size = max(1, min(settings.embedding_batch_size, 40))
         newly_count = 0
         for i in range(0, len(unembedded_chunks), batch_size):
             batch = unembedded_chunks[i : i + batch_size]
@@ -332,6 +337,7 @@ async def embed_document_chunks(
                 c.embedding = emb
                 newly_count += 1
             db.commit()
+            await asyncio.sleep(0.4)
 
         new_embedded_count = (
             db.query(DocumentChunk)
@@ -367,9 +373,11 @@ async def embed_document_chunks(
 
 @router.post("/embed-all")
 async def embed_all_unembedded_chunks(
+    limit: Optional[int] = Query(None, description="حداکثر تعداد قطعات برای بردارسازی در این درخواست"),
     db: Session = Depends(get_db),
 ):
     """Generate embeddings for all unembedded chunks across all documents."""
+    import asyncio
     from app.core.config import get_settings
     from app.infrastructure.db.models.document import DocumentChunk
     from app.infrastructure.embeddings.openai_provider import OpenAIEmbeddingProvider
@@ -391,6 +399,9 @@ async def embed_all_unembedded_chunks(
             "message": "تمامی قطعات موجود در پایگاه دانش از پیش دارای بردار معنایی هستند.",
         }
 
+    if limit and limit > 0:
+        unembedded_chunks = unembedded_chunks[:limit]
+
     settings = get_settings()
     if not settings.embedding_api_key or settings.embedding_api_key == "test-key":
         raise HTTPException(
@@ -407,7 +418,7 @@ async def embed_all_unembedded_chunks(
             batch_size=settings.embedding_batch_size,
         )
 
-        batch_size = max(1, min(settings.embedding_batch_size, 10))
+        batch_size = max(1, min(settings.embedding_batch_size, 40))
         newly_count = 0
         for i in range(0, len(unembedded_chunks), batch_size):
             batch = unembedded_chunks[i : i + batch_size]
@@ -417,6 +428,7 @@ async def embed_all_unembedded_chunks(
                 c.embedding = emb
                 newly_count += 1
             db.commit()
+            await asyncio.sleep(0.4)
 
         new_embedded_count = (
             db.query(DocumentChunk)
