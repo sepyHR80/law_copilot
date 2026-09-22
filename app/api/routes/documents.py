@@ -113,6 +113,18 @@ async def delete_document(
     if not doc:
         raise HTTPException(status_code=404, detail="Document not found")
 
+    from app.infrastructure.db.models.document import DocumentChunk
+
+    version_ids = [v.id for v in doc.versions]
+    if version_ids:
+        # Break self-referencing foreign key cycles before deletion
+        db.query(DocumentChunk).filter(DocumentChunk.document_version_id.in_(version_ids)).update(
+            {"parent_chunk_id": None}, synchronize_session=False
+        )
+        db.query(DocumentChunk).filter(DocumentChunk.document_version_id.in_(version_ids)).delete(
+            synchronize_session=False
+        )
+
     for version in doc.versions:
         if version.storage_key:
             try:
