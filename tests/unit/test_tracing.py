@@ -132,6 +132,30 @@ class TestLegalCategorizer:
         assert res["intent"] == "general"
         assert res["category"] == "گفتگوی عمومی و راهنمایی"
 
+    @pytest.mark.asyncio
+    async def test_llm_categorizer_with_markdown_code_fences(self):
+        """Test categorize_with_llm when LLM outputs json inside markdown code blocks."""
+        from app.tracing.categorizer import extract_json_from_response
+
+        # Test extraction directly
+        raw = "```json\n{\n  \"intent\": \"general\",\n  \"category\": \"greeting\"\n}\n```"
+        extracted = extract_json_from_response(raw)
+        assert extracted == {"intent": "general", "category": "greeting"}
+
+        # Test with custom handler in FakeLLMProvider
+        from app.domain.llm.models import LLMResponse, LLMUsage
+        fenced_provider = FakeLLMProvider(
+            custom_handler=lambda req: LLMResponse(
+                content="```json\n{\n  \"intent\": \"general\",\n  \"category\": \"گفتگوی عمومی و راهنمایی\"\n}\n```",
+                model="gemini",
+                usage=LLMUsage(prompt_tokens=10, completion_tokens=10, total_tokens=20),
+            )
+        )
+        service = LLMService(provider=fenced_provider)
+        res = await categorize_with_llm("سلام و درود", service)
+        assert res["intent"] == "general"
+        assert res["category"] == "گفتگوی عمومی و راهنمایی"
+
 
 class TestTraceService:
     """Test TraceService persistence, aggregation, and querying."""

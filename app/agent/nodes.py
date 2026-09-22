@@ -13,6 +13,7 @@ from app.domain.retrieval.models import HybridSearchQuery, RetrievalFilter
 from app.domain.retrieval.protocol import HybridRetrieverProtocol, RerankerProtocol
 from app.llm.service import LLMService
 from app.rag.context_builder import ContextBuilder
+from app.tracing.categorizer import extract_json_from_response
 
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
@@ -90,6 +91,34 @@ def create_analyze_intent_node(llm_service: Optional[LLMService] = None):
         t0 = time.perf_counter()
         query = state.get("query", "").strip()
 
+        # Fast-path triage for common conversational greetings and capabilities queries (< 2ms)
+        clean_text = query.replace("؟", " ").replace("?", " ").replace("!", " ").replace(".", " ").replace("،", " ").replace(":", " ")
+        q_norm = " ".join(clean_text.strip().lower().split())
+        fast_greetings = {"سلام", "سلام علیکم", "درود", "درود بر شما", "صبح بخیر", "عصر بخیر", "شب بخیر", "خسته نباشید", "hi", "hello", "hey", "greetings"}
+        fast_capabilities = {
+            "چه کارهایی میتونی انجام بدی", "چه کار هایی میتونی انجام بدی", "چه کاری از دستت برمیاد",
+            "چه کمکی میتونی بکنی", "چطور کمکم میکنی", "راهنما", "معرفی", "who are you", "what can you do", "help",
+            "چه خدماتی ارائه میدهی", "وظایف شما چیست", "چیکار میتونی بکنی"
+        }
+        if q_norm in fast_greetings or q_norm in fast_capabilities:
+            dur = int((time.perf_counter() - t0) * 1000)
+            return {
+                "intent": "general",
+                "trace_metadata": {
+                    **state.get("trace_metadata", {}),
+                    "intent_classified": "general",
+                    "category": "گفتگوی عمومی و راهنمایی",
+                    "fast_path": True,
+                },
+                "execution_path": _append_execution_step(
+                    state,
+                    step="analyze_intent",
+                    title="تحلیل قصد و نوع پیام (مکالمه عمومی)",
+                    duration_ms=dur,
+                    details={"intent": "general", "category": "گفتگوی عمومی و راهنمایی", "fast_path": True},
+                ),
+            }
+
         # Classify intent and legal category via LLM inference when LLM service is available
         if llm_service is not None:
             try:
@@ -159,16 +188,21 @@ def create_handle_general_node():
         is_persian = any("\u0600" <= c <= "\u06ff" for c in query_text)
         if is_persian:
             response_text = (
-                "درود بر شما! من دستیار هوشمند حقوقی Law Copilot هستم. "
-                "آماده‌ام تا به پرسش‌های حقوقی شما بر اساس قوانین، آیین‌نامه‌ها، احکام قضایی "
-                "و قراردادهای بارگذاری‌شده در پایگاه دانش پاسخ دهم. "
-                "شما می‌توانید سوال حقوقی خود را بپرسید تا با استناد دقیق به مواد قانونی به آن پاسخ دهم."
+                "درود بر شما! من دستیار هوشمند حقوقی Law Copilot هستم.\n\n"
+                "آماده‌ام تا در زمینه‌های زیر به شما کمک کنم:\n"
+                "۱. **پاسخ به سوالات حقوقی و قضایی**: تحلیل مسائل کیفری، حقوق مدنی، تجارت، کار، خانواده و آیین دادرسی بر اساس قوانین رسمی کشور و اسناد بارگذاری‌شده در پایگاه دانش.\n"
+                "۲. **بررسی و تحلیل اسناد و قراردادها**: مطالعه متن قوانین، قراردادها و آراء قضایی با استخراج و استناد مستقیم به مواد قانونی.\n"
+                "۳. **تنظیم و نگارش اسناد حقوقی**: تدوین و بازبینی قراردادها، اظهارنامه‌ها، دادخواست‌ها و شکواییه‌ها.\n\n"
+                "شما می‌توانید پرسش حقوقی خود را مستقیماً مطرح کنید یا سند مورد نظرتان را از بخش بارگذاری اسناد اضافه فرمایید."
             )
         else:
             response_text = (
-                "Hello! I am Law Copilot, your specialized legal AI assistant. "
-                "You can ask me questions about your uploaded contracts, statutes, case law, "
-                "and regulatory documents. I provide grounded answers with precise document citations."
+                "Hello! I am Law Copilot, your specialized legal AI assistant.\n\n"
+                "Here is how I can assist you:\n"
+                "1. **Legal Research & QA**: Answering questions on civil, criminal, commercial, and labor laws with exact article citations.\n"
+                "2. **Document Analysis**: Examining uploaded statutes, contracts, court rulings, and regulatory circulars.\n"
+                "3. **Legal Drafting**: Reviewing and drafting contracts, notices, and legal petitions.\n\n"
+                "Feel free to ask a legal question or upload documents to get started!"
             )
         dur = int((time.perf_counter() - t0) * 1000)
         return {
@@ -468,15 +502,15 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
         except Exception:
             res = await llm_service.complete(prompt=prompt, system_prompt=sys_prompt)
             content = res.content.strip()
-            try:
-                data = json.loads(content)
+            data = extract_json_from_response(content)
+            if data:
                 draft_answer = data.get("answer", content)
                 raw_citations = data.get("citations", [])
                 is_sufficient = bool(data.get("is_sufficient", True))
-            except Exception:
+            else:
                 draft_answer = content
                 raw_citations = []
-                is_sufficient = "insufficient evidence" not in content.lower()
+                is_sufficient = "insufficient evidence" not in content.lower() and "ناکافی" not in content.lower()
 
         dur = int((time.perf_counter() - t0) * 1000)
         return {
@@ -641,9 +675,16 @@ def create_repair_draft_node(llm_service: LLMService):
             is_sufficient = parsed.is_sufficient
         except Exception:
             res = await llm_service.complete(prompt=repair_prompt)
-            draft_answer = res.content.strip()
-            raw_citations = []
-            is_sufficient = True
+            content = res.content.strip()
+            data = extract_json_from_response(content)
+            if data:
+                draft_answer = data.get("answer", content)
+                raw_citations = data.get("citations", [])
+                is_sufficient = bool(data.get("is_sufficient", True))
+            else:
+                draft_answer = content
+                raw_citations = []
+                is_sufficient = True
 
         dur = int((time.perf_counter() - t0) * 1000)
         return {

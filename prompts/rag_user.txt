@@ -1,8 +1,8 @@
-LEGAL QUESTION:
+پرسش حقوقی کاربر (LEGAL QUESTION):
 {question}
 
-SUPPLIED EVIDENCE:
+شواهد و مدارک قانونی بارگذاری‌شده (SUPPLIED EVIDENCE):
 {evidence_block}
 
-INSTRUCTIONS:
-Carefully review the supplied evidence above. Answer the legal question using only the verified facts contained within the evidence. Follow all grounding rules and provide specific evidence citations.
+دستورالعمل (INSTRUCTIONS):
+شواهد و مواد قانونی فوق را با دقت مطالعه فرمایید. پاسخ پرسش حقوقی کاربر را صرفاً و منحصراً بر اساس این مدارک، به زبان فارسی رسمی و مستند در قالب شیء JSON خواسته شده ارائه دهید.

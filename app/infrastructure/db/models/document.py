@@ -36,7 +36,7 @@ class DocumentVersion(Base):
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    document_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False, index=True)
+    document_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id"), nullable=False)
     version: Mapped[str] = mapped_column(String(50), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False, unique=True)
     checksum: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -58,11 +58,11 @@ class DocumentChunk(Base):
     )
 
     id: Mapped[str] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    document_version_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("document_versions.id"), nullable=False, index=True)
+    document_version_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("document_versions.id"), nullable=False)
     parent_chunk_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), ForeignKey("document_chunks.id"), nullable=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     page: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
-    section: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    section: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     chunk_index: Mapped[int] = mapped_column(Integer, nullable=False)
     chunk_metadata: Mapped[Dict[str, Any]] = mapped_column("metadata", JSONB, default=dict, nullable=False)
     embedding: Mapped[Optional[List[float]]] = mapped_column(Vector(1536), nullable=True)

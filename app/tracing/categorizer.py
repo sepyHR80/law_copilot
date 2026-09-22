@@ -72,6 +72,38 @@ def categorize_from_knowledge_base(
     return f"پایگاه دانش: {primary_title}"
 
 
+def extract_json_from_response(text: str) -> Optional[Dict[str, Any]]:
+    """Extract and parse a JSON object from LLM response text without regex."""
+    clean = text.strip()
+    if clean.startswith("```"):
+        lines = clean.splitlines()
+        if lines and lines[0].startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        clean = "\n".join(lines).strip()
+
+    try:
+        data = json.loads(clean)
+        if isinstance(data, dict):
+            return data
+    except Exception:
+        pass
+
+    first_brace = clean.find("{")
+    last_brace = clean.rfind("}")
+    if first_brace != -1 and last_brace != -1 and last_brace > first_brace:
+        candidate = clean[first_brace : last_brace + 1]
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+    return None
+
+
 async def categorize_with_llm(
     query: str,
     llm_service: Any,
@@ -81,7 +113,7 @@ async def categorize_with_llm(
         "شما موتور دسته‌بندی موضوعی و حقوقی دستیار هوشمند حقوقی Law Copilot هستید.\n"
         "پرسش کاربر را تحلیل کرده و قصد (intent) و شاخه حقوقی (category) آن را مشخص کنید.\n"
         "قصد (intent) باید یکی از موارد زیر باشد:\n"
-        "- 'general': احوالپرسی، تعارفات یا سوالات غیرحقوقی\n"
+        "- 'general': احوالپرسی، تعارفات، معرفی یا سوالات غیرحقوقی\n"
         "- 'document_generation': درخواست تنظیم، نگارش یا پیش‌نویس اسناد و قراردادها\n"
         "- 'legal_qa': پرسش‌های تخصصی حقوقی، کیفری، مدنی، تجاری، کار یا آیین دادرسی\n\n"
         "شاخه حقوقی (category) باید یکی از موارد زیر یا متناسب با موضوع باشد:\n"
@@ -101,10 +133,28 @@ async def categorize_with_llm(
             temperature=0.0,
             max_tokens=80,
         )
-        data = json.loads(resp.content.strip())
+        data = extract_json_from_response(resp.content) or {}
+        raw_intent = str(data.get("intent", "legal_qa")).strip().lower()
+
+        if "general" in raw_intent or "greeting" in raw_intent or "احوال" in raw_intent:
+            intent = "general"
+        elif "document" in raw_intent or "draft" in raw_intent or "تنظیم" in raw_intent:
+            intent = "document_generation"
+        else:
+            intent = "legal_qa"
+
+        category = str(data.get("category", "")).strip()
+        if not category or category.lower() in ("greeting", "general"):
+            if intent == "general":
+                category = "گفتگوی عمومی و راهنمایی"
+            elif intent == "document_generation":
+                category = "تنظیم و تدوین اسناد حقوقی"
+            else:
+                category = "استعلامات و پژوهش حقوقی"
+
         return {
-            "intent": data.get("intent", "legal_qa"),
-            "category": data.get("category", "استعلامات و پژوهش حقوقی"),
+            "intent": intent,
+            "category": category,
         }
     except Exception as exc:
         logger.debug("LLM categorization fallback: %s", exc)

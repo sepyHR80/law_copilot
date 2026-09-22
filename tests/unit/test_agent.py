@@ -243,6 +243,33 @@ class TestLegalAgentGraph:
         # Hallucinated citations are stripped
         assert res.citations == []
 
+    @pytest.mark.asyncio
+    async def test_persian_greeting_and_capabilities_routing(self) -> None:
+        """Verify greetings and capability queries route to handle_general without retrieval."""
+        mock_retriever = AsyncMock()
+        fake_llm = FakeLLMProvider()
+
+        compiled_graph = build_legal_agent_graph(
+            hybrid_retriever=mock_retriever,
+            reranker=FakeReranker(),
+            llm_service=LLMService(provider=fake_llm),
+            context_builder=ContextBuilder(),
+        )
+        agent = LegalAgent(compiled_graph)
+
+        # Test greeting
+        res_greeting = await agent.run(AgentRequest(query="سلام"))
+        assert res_greeting.intent == "general"
+        assert "Law Copilot" in res_greeting.response
+        assert "سوالات حقوقی" in res_greeting.response
+        mock_retriever.search.assert_not_called()
+
+        # Test capabilities inquiry
+        res_cap = await agent.run(AgentRequest(query="چه کار هایی میتونی انجام بدی ؟"))
+        assert res_cap.intent == "general"
+        assert "پاسخ به سوالات حقوقی و قضایی" in res_cap.response
+        mock_retriever.search.assert_not_called()
+
 
 class TestAgentApi:
     """Test the agent chat HTTP endpoint."""

@@ -34,7 +34,7 @@ class FakeLLMProvider(LLMProvider):
         )
         if is_intent_query:
             user_msg = request.messages[-1].content.lower() if request.messages else ""
-            if any(w in user_msg for w in ["hello", "سلام", "درود", "hi", "hey"]):
+            if any(w in user_msg for w in ["hello", "سلام", "درود", "hi", "hey", "چه کار", "چطور", "کمک"]):
                 intent_val = "general"
                 cat_val = "گفتگوی عمومی و راهنمایی"
             elif any(w in user_msg for w in ["draft", "تنظیم", "قرارداد", "دادخواست"]):
