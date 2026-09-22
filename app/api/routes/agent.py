@@ -84,7 +84,7 @@ async def chat_with_agent(
             })
 
         citations_data = [
-            c.model_dump() if hasattr(c, "model_dump") else c
+            c.model_dump(mode="json") if hasattr(c, "model_dump") else c
             for c in response.citations
         ]
 
@@ -97,7 +97,7 @@ async def chat_with_agent(
             execution_path=response.execution_path,
             retrieval_data=retrieval_data,
             citations=citations_data,
-            evidence=[e.model_dump() if hasattr(e, "model_dump") else e for e in response.evidence],
+            evidence=[e.model_dump(mode="json") if hasattr(e, "model_dump") else e for e in response.evidence],
             conversation_id=request.conversation_id,
             model_name=settings.llm_model,
             latency_ms=total_latency_ms,

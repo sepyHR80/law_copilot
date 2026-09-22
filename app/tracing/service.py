@@ -22,6 +22,25 @@ from app.tracing.models import (
 logger = logging.getLogger(__name__)
 
 
+def _make_json_safe(data: Any) -> Any:
+    """Recursively convert UUIDs, datetimes, and complex objects into JSON primitives."""
+    if data is None:
+        return None
+    if isinstance(data, (str, int, float, bool)):
+        return data
+    if isinstance(data, UUID):
+        return str(data)
+    if isinstance(data, datetime):
+        return data.isoformat()
+    if hasattr(data, "model_dump"):
+        return _make_json_safe(data.model_dump(mode="json"))
+    if isinstance(data, dict):
+        return {str(k): _make_json_safe(v) for k, v in data.items()}
+    if isinstance(data, (list, tuple, set)):
+        return [_make_json_safe(v) for v in data]
+    return str(data)
+
+
 class TraceService:
     """Service to capture and query agent execution traces and categories."""
 
@@ -87,21 +106,21 @@ class TraceService:
                 ai_response=ai_response,
                 status=status,
                 is_sufficient=is_sufficient,
-                execution_path=execution_path or [],
-                retrieval_data=retrieval_data or [],
-                citations=citations or [],
-                evidence=evidence or [],
+                execution_path=_make_json_safe(execution_path or []),
+                retrieval_data=_make_json_safe(retrieval_data or []),
+                citations=_make_json_safe(citations or []),
+                evidence=_make_json_safe(evidence or []),
                 model_name=model_name,
                 latency_ms=latency_ms,
                 error_message=error_message,
-                trace_metadata=trace_metadata or {},
+                trace_metadata=_make_json_safe(trace_metadata or {}),
                 created_at=datetime.utcnow(),
             )
             db.add(trace_record)
             db.commit()
             return trace_record.id
         except Exception as exc:
-            logger.warning("Failed to persist ChatTrace: %s", exc)
+            logger.error("Failed to persist ChatTrace: %s", exc, exc_info=True)
             try:
                 db.rollback()
             except Exception:
