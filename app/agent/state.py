@@ -46,3 +46,4 @@ class AgentState(TypedDict, total=False):
     final_response: Optional[str]
     errors: List[str]
     trace_metadata: Dict[str, Any]
+    execution_path: List[Dict[str, Any]]

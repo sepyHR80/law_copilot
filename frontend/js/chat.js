@@ -268,6 +268,20 @@ document.addEventListener("DOMContentLoaded", () => {
       `;
     }
 
+    // Debug Trace Link
+    let traceHtml = "";
+    if (data.trace_id) {
+      traceHtml = `
+        <div style="margin-top: 0.75rem; border-top: 1px dashed var(--surface-border); padding-top: 0.5rem; display: flex; align-items: center; justify-content: space-between; font-size: 0.78rem;">
+          <span style="color: var(--text-muted);">مرکز پایش و لاگ هوش مصنوعی:</span>
+          <a href="/traces.html?id=${encodeURIComponent(data.trace_id)}" target="_blank" style="display: inline-flex; align-items: center; gap: 0.3rem; color: var(--primary-600); font-weight: 600; text-decoration: none;">
+            <span>🔬 مشاهده مسیر پردازش و لاگ دیباگ (Execution Trace)</span>
+            <span>↗</span>
+          </a>
+        </div>
+      `;
+    }
+
     bubble.innerHTML = `
       <div class="bubble-meta">
         <span>🤖 دستیار هوشمند حقوقی</span>
@@ -283,6 +297,7 @@ document.addEventListener("DOMContentLoaded", () => {
         </div>
         ${citationsHtml}
         ${evidenceHtml}
+        ${traceHtml}
       </div>
     `;
 

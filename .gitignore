@@ -52,6 +52,6 @@ htmlcov/
 .DS_Store?
 ._*
 .Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Data & PDF files
+*.pdf
+

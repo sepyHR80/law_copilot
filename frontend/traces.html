@@ -1,0 +1,445 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>سامانه ردیابی و دیباگ هوش مصنوعی | Law Copilot</title>
+  <link rel="stylesheet" href="/css/styles.css">
+  <style>
+    .traces-layout {
+      display: grid;
+      grid-template-columns: 320px 1fr;
+      gap: 1.5rem;
+      align-items: start;
+    }
+    @media (max-width: 992px) {
+      .traces-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+    .category-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      margin-bottom: 0.5rem;
+      cursor: pointer;
+      transition: var(--transition);
+      font-weight: 500;
+      color: var(--text-main);
+    }
+    .category-item:hover, .category-item.active {
+      border-color: var(--primary-500);
+      background: var(--primary-50);
+      color: var(--primary-700);
+    }
+    .category-badge {
+      background: var(--primary-100);
+      color: var(--primary-700);
+      font-size: 0.78rem;
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      font-weight: 700;
+    }
+    .trace-card {
+      background: var(--surface-card);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      transition: var(--transition);
+      box-shadow: var(--shadow-sm);
+    }
+    .trace-card:hover {
+      box-shadow: var(--shadow-md);
+      border-color: var(--primary-300, #93c5fd);
+    }
+    .trace-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.75rem;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .trace-query {
+      font-weight: 600;
+      font-size: 1.05rem;
+      color: var(--primary-900);
+      margin-bottom: 0.5rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 0.5rem;
+    }
+    .trace-response-preview {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      line-height: 1.6;
+      background: var(--surface-bg);
+      padding: 0.75rem 1rem;
+      border-radius: var(--radius-md);
+      margin-bottom: 0.85rem;
+      border-right: 3px solid var(--primary-500);
+    }
+    .trace-meta-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      border-top: 1px dashed var(--surface-border);
+      padding-top: 0.75rem;
+    }
+    .status-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.65rem;
+      border-radius: var(--radius-full);
+      font-size: 0.8rem;
+      font-weight: 600;
+    }
+    .status-pill.success {
+      background: var(--success-50);
+      color: var(--success-600);
+      border: 1px solid #bbf7d0;
+    }
+    .status-pill.insufficient {
+      background: var(--warning-50);
+      color: var(--warning-500);
+      border: 1px solid #fde68a;
+    }
+    .status-pill.error, .status-pill.rate_limited {
+      background: var(--danger-50);
+      color: var(--danger-600);
+      border: 1px solid #fecaca;
+    }
+
+    /* Modal / Drawer for Execution Trace */
+    .trace-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(15, 23, 42, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+    }
+    .trace-modal.open {
+      display: flex;
+    }
+    .trace-modal-content {
+      background: var(--surface-card);
+      border-radius: var(--radius-lg);
+      max-width: 900px;
+      width: 100%;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: var(--shadow-xl);
+      overflow: hidden;
+    }
+    .trace-modal-header {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--surface-border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface-bg);
+    }
+    .trace-modal-body {
+      padding: 1.5rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .timeline {
+      position: relative;
+      padding-right: 2rem;
+      margin: 1.5rem 0;
+    }
+    .timeline::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      right: 11px;
+      width: 2px;
+      background: var(--surface-border);
+    }
+    .timeline-item {
+      position: relative;
+      margin-bottom: 1.25rem;
+    }
+    .timeline-dot {
+      position: absolute;
+      right: -2rem;
+      top: 4px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary-600);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      box-shadow: 0 0 0 4px var(--surface-card);
+    }
+    .timeline-dot.failed {
+      background: var(--danger-600);
+    }
+    .timeline-dot.skipped {
+      background: var(--text-light);
+    }
+    .timeline-card {
+      background: var(--surface-bg);
+      border: 1px solid var(--surface-border);
+      border-radius: var(--radius-md);
+      padding: 0.85rem 1.1rem;
+    }
+    .timeline-title {
+      font-weight: 600;
+      color: var(--primary-900);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 0.35rem;
+    }
+    .timeline-duration {
+      font-size: 0.78rem;
+      color: var(--primary-600);
+      background: var(--primary-100);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-full);
+      font-weight: 600;
+    }
+    .json-code {
+      background: #1e293b;
+      color: #f8fafc;
+      padding: 1rem;
+      border-radius: var(--radius-md);
+      font-family: monospace;
+      font-size: 0.82rem;
+      direction: ltr;
+      text-align: left;
+      overflow-x: auto;
+      max-height: 350px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation Bar -->
+  <nav class="navbar">
+    <div class="nav-container">
+      <a href="/" class="brand-link">
+        <div class="brand-logo-icon">⚖️</div>
+        <span>سامانه هوشمند حقوقی Law Copilot</span>
+      </a>
+      <ul class="nav-links">
+        <li class="nav-item"><a href="/">صفحه اصلی</a></li>
+        <li class="nav-item"><a href="/upload.html">بارگذاری و پردازش پایگاه دانش</a></li>
+        <li class="nav-item"><a href="/chat.html">دستیار گفتگو حقوقی</a></li>
+        <li class="nav-item active"><a href="/traces.html">سیستم ردیابی و دیباگ هوش مصنوعی</a></li>
+      </ul>
+      <div class="system-status-badge">
+        <span class="status-dot"></span>
+        <span>مرکز پایش و لاگ فعال</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-wrapper" style="margin-top: 1.5rem; margin-bottom: 2rem;">
+
+    <!-- Page Header & Global Stats -->
+    <div style="margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+      <div>
+        <h1 style="font-size: 1.6rem; color: var(--primary-900); display: flex; align-items: center; gap: 0.5rem;">
+          <span>🔍</span>
+          <span>سامانه ردیابی مسیر هوش مصنوعی و دسته‌بندی چت‌ها</span>
+        </h1>
+        <p style="color: var(--text-muted); font-size: 0.92rem; margin-top: 0.25rem;">
+          بررسی موشکافانه مسیر طی‌شده در گراف LangGraph برای هر پیام، دسته‌بندی موضوعی و استخراج لاگ‌های دیباگ.
+        </p>
+      </div>
+
+      <div style="display: flex; gap: 0.75rem;">
+        <button id="refreshBtn" class="btn btn-secondary" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.5rem 1rem;">
+          <span>🔄</span>
+          <span>بروزرسانی لاگ‌ها</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Quick Stats Cards -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem;">
+      <div class="card" style="padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--primary-50); color: var(--primary-600); display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">💬</div>
+        <div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">کل چت‌های ثبت‌شده</div>
+          <div id="statTotalTraces" style="font-size: 1.4rem; font-weight: 700; color: var(--primary-900);">-</div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: var(--success-50); color: var(--success-600); display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">🎯</div>
+        <div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">نرخ پاسخ‌های مستند</div>
+          <div id="statSuccessRate" style="font-size: 1.4rem; font-weight: 700; color: var(--success-600);">-</div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: #fef3c7; color: #b45309; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">⚡</div>
+        <div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">میانگین زمان پاسخ</div>
+          <div id="statAvgLatency" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-gold-dark);">-</div>
+        </div>
+      </div>
+
+      <div class="card" style="padding: 1.25rem; display: flex; align-items: center; gap: 1rem;">
+        <div style="width: 48px; height: 48px; border-radius: var(--radius-md); background: #f3e8ff; color: #7e22ce; display: flex; align-items: center; justify-content: center; font-size: 1.4rem;">🏷️</div>
+        <div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);">تعداد دسته‌بندی‌ها</div>
+          <div id="statCategoriesCount" style="font-size: 1.4rem; font-weight: 700; color: #7e22ce);">-</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main Traces Layout -->
+    <div class="traces-layout">
+      
+      <!-- Right Sidebar: Categories & Filters -->
+      <aside class="card" style="padding: 1.25rem;">
+        <h2 style="font-size: 1.05rem; color: var(--primary-900); margin-bottom: 1rem; display: flex; align-items: center; gap: 0.4rem;">
+          <span>📑</span>
+          <span>دسته‌بندی موضوعی چت‌ها</span>
+        </h2>
+
+        <!-- Search Bar -->
+        <div style="margin-bottom: 1rem;">
+          <input type="text" id="searchInput" class="form-input" placeholder="جستجو در پرسش‌ها یا پاسخ‌ها..." style="font-size: 0.85rem; padding: 0.5rem 0.75rem;">
+        </div>
+
+        <!-- Status Filter -->
+        <div style="margin-bottom: 1.25rem;">
+          <label style="font-size: 0.8rem; color: var(--text-muted); display: block; margin-bottom: 0.35rem;">فیلتر وضعیت:</label>
+          <select id="statusFilter" class="form-select" style="font-size: 0.85rem; padding: 0.45rem 0.65rem;">
+            <option value="">همه وضعیت‌ها</option>
+            <option value="success">پاسخ‌های موفق و مستند</option>
+            <option value="insufficient">شواهد ناکافی پایگاه دانش</option>
+            <option value="error">خطاها یا محدودیت نرخ</option>
+          </select>
+        </div>
+
+        <div id="categoriesList">
+          <div class="category-item active" data-category="">
+            <span>همه گفتگوها</span>
+            <span class="category-badge" id="allCountBadge">0</span>
+          </div>
+          <!-- Dynamic categories injected here -->
+        </div>
+      </aside>
+
+      <!-- Center Feed: List of Traced Messages -->
+      <section>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1rem;">
+          <div style="font-weight: 600; color: var(--primary-900); font-size: 1.05rem;" id="currentFeedTitle">
+            همه گفتگوها
+          </div>
+          <div style="font-size: 0.82rem; color: var(--text-muted);" id="feedCountLabel">
+            نمایش ۰ پیام
+          </div>
+        </div>
+
+        <!-- Traces Container -->
+        <div id="tracesFeedContainer">
+          <div style="text-align: center; padding: 3rem; color: var(--text-muted);">
+            در حال بارگذاری لاگ‌ها...
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Interactive Debugging Modal -->
+  <div id="traceModal" class="trace-modal">
+    <div class="trace-modal-content">
+      <div class="trace-modal-header">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span style="font-size: 1.3rem;">🔬</span>
+          <div>
+            <div style="font-weight: 700; color: var(--primary-900); font-size: 1.05rem;">ردیابی گام‌به‌گام مسیر اجرای هوش مصنوعی</div>
+            <div id="modalTraceId" style="font-size: 0.75rem; color: var(--text-muted); direction: ltr; text-align: right;"></div>
+          </div>
+        </div>
+        <button id="closeModalBtn" style="background: none; border: none; font-size: 1.4rem; cursor: pointer; color: var(--text-muted);">&times;</button>
+      </div>
+
+      <div class="trace-modal-body">
+        
+        <!-- Summary Box -->
+        <div style="background: var(--surface-bg); padding: 1rem; border-radius: var(--radius-md); border: 1px solid var(--surface-border); margin-bottom: 1.25rem;">
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-700); margin-bottom: 0.35rem;">پرسش کاربر:</div>
+          <div id="modalUserQuery" style="font-size: 0.95rem; font-weight: 600; color: var(--primary-900); margin-bottom: 0.75rem;"></div>
+
+          <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary-700); margin-bottom: 0.35rem;">پاسخ نهایی دستیار:</div>
+          <div id="modalAiResponse" style="font-size: 0.9rem; color: var(--text-main); line-height: 1.6; white-space: pre-wrap;"></div>
+
+          <div style="display: flex; gap: 1rem; margin-top: 0.75rem; font-size: 0.8rem; color: var(--text-muted); border-top: 1px dashed var(--surface-border); padding-top: 0.5rem; flex-wrap: wrap;">
+            <div>مدل: <strong id="modalModelName" style="color: var(--primary-900);">-</strong></div>
+            <div>زمان کل: <strong id="modalLatency" style="color: var(--primary-900);">-</strong></div>
+            <div>دسته‌بندی: <strong id="modalCategory" style="color: var(--primary-900);">-</strong></div>
+            <div>وضعیت: <span id="modalStatusPill" class="status-pill success">موفق</span></div>
+          </div>
+        </div>
+
+        <!-- Section: Execution Path Timeline -->
+        <h3 style="font-size: 1rem; color: var(--primary-900); margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+          <span>🛤️</span>
+          <span>تایم‌لاین گام‌های طی‌شده در گراف (Execution Path):</span>
+        </h3>
+        
+        <div id="modalTimeline" class="timeline">
+          <!-- Injected dynamically -->
+        </div>
+
+        <!-- Section: Retrieved Documents & Evidence -->
+        <h3 style="font-size: 1rem; color: var(--primary-900); margin-top: 1.5rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.4rem;">
+          <span>📄</span>
+          <span>شواهد و چانک‌های بازیابی‌شده از پایگاه دانش:</span>
+        </h3>
+        <div id="modalEvidenceContainer">
+          <!-- Injected dynamically -->
+        </div>
+
+        <!-- Section: Raw JSON -->
+        <h3 style="font-size: 1rem; color: var(--primary-900); margin-top: 1.5rem; margin-bottom: 0.5rem; display: flex; align-items: center; justify-content: space-between;">
+          <div style="display: flex; align-items: center; gap: 0.4rem;">
+            <span>💻</span>
+            <span>داده‌های خام JSON جهت دیباگ مهندسی:</span>
+          </div>
+          <button id="copyJsonBtn" class="btn btn-secondary" style="font-size: 0.75rem; padding: 0.25rem 0.65rem;">📋 کپی JSON</button>
+        </h3>
+        <pre id="modalRawJson" class="json-code"></pre>
+
+      </div>
+    </div>
+  </div>
+
+  <script src="/js/traces.js"></script>
+</body>
+</html>

@@ -30,3 +30,5 @@ class AgentResponse(BaseModel):
     is_sufficient: bool = True
     retry_count: int = 0
     trace_metadata: Dict[str, Any] = Field(default_factory=dict)
+    execution_path: List[Dict[str, Any]] = Field(default_factory=list)
+    trace_id: Optional[str] = None

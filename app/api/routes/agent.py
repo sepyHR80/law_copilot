@@ -1,5 +1,5 @@
-"""Agent interaction API routes."""
-
+import time
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.infrastructure.reranking import get_default_reranker
 from app.llm.service import LLMService
 from app.rag.context_builder import ContextBuilder
 from app.retrieval.hybrid import HybridSearchService
+from app.tracing.service import TraceService
 
 router = APIRouter(prefix="/api/v1/agent", tags=["agent"])
 
@@ -64,22 +65,89 @@ async def chat_with_agent(
     agent: LegalAgent = Depends(get_legal_agent),
 ) -> AgentResponse:
     """Invoke the LangGraph legal agent state machine."""
+    t0 = time.perf_counter()
     try:
-        return await agent.run(request)
+        response = await agent.run(request)
+        total_latency_ms = int((time.perf_counter() - t0) * 1000)
+
+        # Extract evidence preview
+        retrieval_data = []
+        for ev in response.evidence:
+            retrieval_data.append({
+                "chunk_id": str(ev.chunk_id),
+                "document_id": str(ev.document_id),
+                "content_preview": ev.content[:300] + ("..." if len(ev.content) > 300 else ""),
+                "score": ev.score,
+                "page": ev.page,
+                "section": ev.section,
+                "title": ev.source.get("title") if isinstance(ev.source, dict) else None,
+            })
+
+        citations_data = [
+            c.model_dump() if hasattr(c, "model_dump") else c
+            for c in response.citations
+        ]
+
+        settings = get_settings()
+        trace_id = TraceService.record_trace(
+            user_query=request.query,
+            ai_response=response.response,
+            intent=response.intent,
+            is_sufficient=response.is_sufficient,
+            execution_path=response.execution_path,
+            retrieval_data=retrieval_data,
+            citations=citations_data,
+            evidence=[e.model_dump() if hasattr(e, "model_dump") else e for e in response.evidence],
+            conversation_id=request.conversation_id,
+            model_name=settings.llm_model,
+            latency_ms=total_latency_ms,
+            status="success" if response.is_sufficient else "insufficient",
+            trace_metadata=response.trace_metadata,
+        )
+
+        if trace_id:
+            response.trace_id = str(trace_id)
+        return response
     except Exception as exc:
+        total_latency_ms = int((time.perf_counter() - t0) * 1000)
         err_str = str(exc).lower()
-        if "rate limit" in err_str or "quota exceeded" in err_str or "429" in err_str:
+        is_rate_limit = "rate limit" in err_str or "quota exceeded" in err_str or "429" in err_str
+        err_msg = (
+            "سقف درخواست‌های روزانه هوش مصنوعی موقتاً تکمیل شده است. "
+            "سیستم به صورت خودکار مدل‌های جایگزین را امتحان می‌کند؛ لطفاً چند لحظه دیگر مجدداً تلاش فرمایید."
+            if is_rate_limit else
+            f"خطا در پردازش هوش مصنوعی: {exc}"
+        )
+
+        trace_id = TraceService.record_trace(
+            user_query=request.query,
+            ai_response=err_msg,
+            intent="legal_qa",
+            is_sufficient=False,
+            execution_path=[{
+                "step": "error",
+                "title": "خطا در پردازش",
+                "status": "failed",
+                "duration_ms": total_latency_ms,
+                "details": {"error": str(exc)},
+                "timestamp": datetime.utcnow().isoformat(),
+            }],
+            conversation_id=request.conversation_id,
+            latency_ms=total_latency_ms,
+            status="rate_limited" if is_rate_limit else "error",
+            error_message=str(exc),
+        )
+
+        if is_rate_limit:
             return AgentResponse(
                 query=request.query,
-                response=(
-                    "سقف درخواست‌های روزانه هوش مصنوعی موقتاً تکمیل شده است. "
-                    "سیستم به صورت خودکار مدل‌های جایگزین را امتحان می‌کند؛ لطفاً چند لحظه دیگر مجدداً تلاش فرمایید."
-                ),
+                response=err_msg,
                 intent="legal_qa",
                 citations=[],
                 evidence=[],
                 is_sufficient=False,
-                trace_metadata={"rate_limit_handled": True},
+                trace_id=str(trace_id) if trace_id else None,
+                trace_metadata={"rate_limit_handled": True, "trace_id": str(trace_id) if trace_id else None},
             )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

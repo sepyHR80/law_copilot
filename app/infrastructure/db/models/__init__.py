@@ -5,6 +5,7 @@ from app.infrastructure.db.models.document import Document, DocumentVersion, Doc
 from app.infrastructure.db.models.conversation import Conversation, Message
 from app.infrastructure.db.models.memory import Memory
 from app.infrastructure.db.models.evaluation import EvaluationCase
+from app.infrastructure.db.models.trace import ChatTrace
 
 __all__ = [
     "User",
@@ -15,4 +16,5 @@ __all__ = [
     "Message",
     "Memory",
     "EvaluationCase",
+    "ChatTrace",
 ]

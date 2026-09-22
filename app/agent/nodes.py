@@ -1,6 +1,8 @@
 """Node implementations for the LangGraph legal agent."""
 
 import json
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
@@ -15,6 +17,27 @@ from app.rag.context_builder import ContextBuilder
 PROMPTS_DIR = Path(__file__).resolve().parent.parent.parent / "prompts"
 
 
+def _append_execution_step(
+    state: AgentState,
+    step: str,
+    title: str,
+    duration_ms: int,
+    status: str = "completed",
+    details: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Helper to record a step in the execution path."""
+    path = list(state.get("execution_path") or [])
+    path.append({
+        "step": step,
+        "title": title,
+        "status": status,
+        "duration_ms": max(1, duration_ms),
+        "details": details or {},
+        "timestamp": datetime.utcnow().isoformat(),
+    })
+    return path
+
+
 class _DraftAnswerSchema(BaseModel):
     answer: str
     is_sufficient: bool = True
@@ -25,6 +48,7 @@ def create_load_memory_node(memory_service: Optional[Any] = None):
     """Create node loading scoped user preferences and case context."""
 
     async def load_memory(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         user_id_str = state.get("user_id")
         memory_context = ""
 
@@ -37,12 +61,20 @@ def create_load_memory_node(memory_service: Optional[Any] = None):
             except Exception:
                 memory_context = ""
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "memory_context": memory_context,
             "trace_metadata": {
                 **state.get("trace_metadata", {}),
                 "memory_loaded": bool(memory_context),
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="load_memory",
+                title="بررسی و بارگذاری حافظه کاربر",
+                duration_ms=dur,
+                details={"user_id": user_id_str, "memory_loaded": bool(memory_context)},
+            ),
         }
 
     return load_memory
@@ -51,8 +83,8 @@ def create_load_memory_node(memory_service: Optional[Any] = None):
 def create_analyze_intent_node():
     """Create node that classifies user intent."""
 
-
     async def analyze_intent(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query = state.get("query", "").strip()
         cleaned = query.lower().strip("!?,. ")
         words = set(cleaned.split())
@@ -70,9 +102,17 @@ def create_analyze_intent_node():
             or bool(words.intersection({"hello", "hi", "hey", "greetings", "سلام", "درود"}))
         )
         if is_greeting or (len(words) <= 1 and cleaned in {"test", "ping"}):
+            dur = int((time.perf_counter() - t0) * 1000)
             return {
                 "intent": "general",
                 "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "general"},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="analyze_intent",
+                    title="تحلیل قصد و نوع پیام",
+                    duration_ms=dur,
+                    details={"intent": "general", "is_conversational": True},
+                ),
             }
 
         # Document drafting keywords per Spec Section 20.2: Intent = document_generation
@@ -89,16 +129,31 @@ def create_analyze_intent_node():
             "prepare a contract",
         ]
         if any(indicator in cleaned for indicator in drafting_indicators):
+            dur = int((time.perf_counter() - t0) * 1000)
             return {
                 "intent": "document_generation",
                 "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "document_generation"},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="analyze_intent",
+                    title="تحلیل قصد و نوع پیام",
+                    duration_ms=dur,
+                    details={"intent": "document_generation", "is_drafting": True},
+                ),
             }
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "intent": "legal_qa",
             "trace_metadata": {**state.get("trace_metadata", {}), "intent_classified": "legal_qa"},
+            "execution_path": _append_execution_step(
+                state,
+                step="analyze_intent",
+                title="تحلیل قصد و نوع پیام",
+                duration_ms=dur,
+                details={"intent": "legal_qa", "requires_retrieval": True},
+            ),
         }
-
 
     return analyze_intent
 
@@ -107,6 +162,7 @@ def create_handle_general_node():
     """Create node that handles conversational and non-retrieval questions."""
 
     async def handle_general(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query_text = state.get("query", "")
         is_persian = any("\u0600" <= c <= "\u06ff" for c in query_text)
         if is_persian:
@@ -122,12 +178,20 @@ def create_handle_general_node():
                 "You can ask me questions about your uploaded contracts, statutes, case law, "
                 "and regulatory documents. I provide grounded answers with precise document citations."
             )
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "final_response": response_text,
             "is_sufficient": True,
             "citations": [],
             "selected_evidence": [],
             "trace_metadata": {**state.get("trace_metadata", {}), "routed_general": True},
+            "execution_path": _append_execution_step(
+                state,
+                step="handle_general",
+                title="پاسخ به گفتگوی عمومی",
+                duration_ms=dur,
+                details={"response_preview": response_text[:120]},
+            ),
         }
 
     return handle_general
@@ -137,12 +201,21 @@ def create_prepare_query_node():
     """Create node that normalizes and prepares search query."""
 
     async def prepare_query(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         raw_query = state.get("query", "")
         # Normalize whitespace
         cleaned = " ".join(raw_query.strip().split())
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "normalized_query": cleaned,
             "trace_metadata": {**state.get("trace_metadata", {}), "query_prepared": True},
+            "execution_path": _append_execution_step(
+                state,
+                step="prepare_query",
+                title="نرمال‌سازی و آماده‌سازی کوئری",
+                duration_ms=dur,
+                details={"normalized_query": cleaned},
+            ),
         }
 
     return prepare_query
@@ -155,6 +228,7 @@ def create_retrieve_knowledge_node(
     """Create node executing hybrid retrieval and cross-encoder reranking."""
 
     async def retrieve_knowledge(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query = state.get("normalized_query", state.get("query", ""))
         filters = state.get("filters")
         top_k = state.get("top_k", 5)
@@ -172,6 +246,15 @@ def create_retrieve_knowledge_node(
         else:
             reranked = []
 
+        dur = int((time.perf_counter() - t0) * 1000)
+        top_cand_info = []
+        for c in reranked[:3]:
+            top_cand_info.append({
+                "chunk_id": str(c.chunk_id),
+                "score": round(float(c.score), 4) if c.score is not None else None,
+                "preview": c.content[:100] + ("..." if len(c.content) > 100 else ""),
+            })
+
         return {
             "retrieval_results": reranked,
             "trace_metadata": {
@@ -179,6 +262,17 @@ def create_retrieve_knowledge_node(
                 "candidates_retrieved": len(candidates),
                 "candidates_reranked": len(reranked),
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="retrieve_knowledge",
+                title="بازیابی ترکیبی (Hybrid Vector + FTS)",
+                duration_ms=dur,
+                details={
+                    "candidates_retrieved": len(candidates),
+                    "candidates_reranked": len(reranked),
+                    "top_candidates": top_cand_info,
+                },
+            ),
         }
 
     return retrieve_knowledge
@@ -188,8 +282,10 @@ def create_assess_evidence_node():
     """Create node determining if sufficient evidence was retrieved."""
 
     async def assess_evidence(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         results = state.get("retrieval_results", [])
         is_sufficient = len(results) > 0
+        dur = int((time.perf_counter() - t0) * 1000)
 
         return {
             "is_sufficient": is_sufficient,
@@ -197,6 +293,13 @@ def create_assess_evidence_node():
                 **state.get("trace_metadata", {}),
                 "evidence_assessed_sufficient": is_sufficient,
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="assess_evidence",
+                title="ارزیابی کفایت مدارک و شواهد",
+                duration_ms=dur,
+                details={"is_sufficient": is_sufficient, "evidence_count": len(results)},
+            ),
         }
 
     return assess_evidence
@@ -206,6 +309,7 @@ def create_handle_insufficient_node():
     """Create node returning standard grounded insufficient evidence response."""
 
     async def handle_insufficient(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query_text = state.get("query", "")
         is_persian = any("\u0600" <= c <= "\u06ff" for c in query_text)
         if is_persian:
@@ -216,12 +320,20 @@ def create_handle_insufficient_node():
         else:
             response_text = "Based on the provided documents, there is insufficient evidence to answer this question."
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "final_response": response_text,
             "is_sufficient": False,
             "citations": [],
             "selected_evidence": [],
             "trace_metadata": {**state.get("trace_metadata", {}), "insufficient_handled": True},
+            "execution_path": _append_execution_step(
+                state,
+                step="handle_insufficient",
+                title="عدم کفایت مدارک در پایگاه دانش",
+                duration_ms=dur,
+                details={"is_sufficient": False, "reason": "no_relevant_evidence"},
+            ),
         }
 
     return handle_insufficient
@@ -231,17 +343,28 @@ def create_external_search_node(search_service: Optional[Any] = None):
     """Create node that searches external web sources when internal retrieval is insufficient."""
 
     async def external_search(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query = state.get("normalized_query", state.get("query", "")).strip()
         if not search_service or not query:
+            dur = int((time.perf_counter() - t0) * 1000)
             return {
                 "external_sources": [],
                 "is_sufficient": False,
                 "trace_metadata": {**state.get("trace_metadata", {}), "external_search_skipped": True},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="external_search",
+                    title="جستجوی تکمیلی وب",
+                    duration_ms=dur,
+                    status="skipped",
+                    details={"skipped": True},
+                ),
             }
 
         try:
             sources = await search_service.search_and_validate(query=query)
             is_sufficient = len(sources) > 0
+            dur = int((time.perf_counter() - t0) * 1000)
             return {
                 "external_sources": sources,
                 "is_sufficient": is_sufficient,
@@ -250,12 +373,28 @@ def create_external_search_node(search_service: Optional[Any] = None):
                     "external_sources_count": len(sources),
                     "external_search_executed": True,
                 },
+                "execution_path": _append_execution_step(
+                    state,
+                    step="external_search",
+                    title="جستجوی تکمیلی وب",
+                    duration_ms=dur,
+                    details={"sources_found": len(sources)},
+                ),
             }
-        except Exception:
+        except Exception as exc:
+            dur = int((time.perf_counter() - t0) * 1000)
             return {
                 "external_sources": [],
                 "is_sufficient": False,
                 "trace_metadata": {**state.get("trace_metadata", {}), "external_search_error": True},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="external_search",
+                    title="جستجوی تکمیلی وب",
+                    duration_ms=dur,
+                    status="failed",
+                    details={"error": str(exc)},
+                ),
             }
 
     return external_search
@@ -268,6 +407,7 @@ def create_build_context_node(
     """Create node structuring evidence into token-bounded context."""
 
     async def build_context(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         retrieval_results = state.get("retrieval_results", [])
         evidence_items = context_builder.build_evidence_items(retrieval_results)
         context_text = context_builder.format_context(evidence_items)
@@ -280,6 +420,7 @@ def create_build_context_node(
             else:
                 context_text = ext_text
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "selected_evidence": evidence_items,
             "context_text": context_text,
@@ -288,6 +429,16 @@ def create_build_context_node(
                 "evidence_items_count": len(evidence_items),
                 "external_sources_count": len(external_sources),
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="build_context",
+                title="تدوین بافتار و ساخت شواهد (Context)",
+                duration_ms=dur,
+                details={
+                    "evidence_items_count": len(evidence_items),
+                    "context_char_count": len(context_text),
+                },
+            ),
         }
 
     return build_context
@@ -297,6 +448,7 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
     """Create node that generates an initial grounded answer draft with citations."""
 
     async def generate_draft(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         query = state.get("normalized_query", state.get("query", ""))
         context_text = state.get("context_text", "")
 
@@ -334,6 +486,7 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
                 raw_citations = []
                 is_sufficient = "insufficient evidence" not in content.lower()
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "draft": draft_answer,
             "raw_citations": raw_citations,
@@ -342,6 +495,17 @@ def create_generate_draft_node(llm_service: LLMService, prompts_dir: Path = PROM
                 **state.get("trace_metadata", {}),
                 "draft_generated": True,
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="generate_draft",
+                title="تولید پاسخ با مدل هوش مصنوعی (LLM)",
+                duration_ms=dur,
+                details={
+                    "is_sufficient": is_sufficient,
+                    "citations_claimed": len(raw_citations),
+                    "draft_length": len(draft_answer),
+                },
+            ),
         }
 
     return generate_draft
@@ -354,10 +518,13 @@ def create_verify_answer_node(
     """Create node verifying draft citations and grounding."""
 
     async def verify_answer(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         raw_citations = state.get("raw_citations", [])
         evidence_items = state.get("selected_evidence", [])
         is_sufficient = state.get("is_sufficient", True)
         draft = state.get("draft", "")
+
+        dur = int((time.perf_counter() - t0) * 1000)
 
         if not is_sufficient:
             return {
@@ -365,6 +532,13 @@ def create_verify_answer_node(
                 "final_response": draft,
                 "citations": [],
                 "trace_metadata": {**state.get("trace_metadata", {}), "verification": "passed_insufficient"},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="verify_answer",
+                    title="راستی‌آزمایی پاسخ و استنادها",
+                    duration_ms=dur,
+                    details={"status": "passed_insufficient", "reason": "not_sufficient"},
+                ),
             }
 
         # Resolve citations strictly
@@ -389,6 +563,14 @@ def create_verify_answer_node(
                         "unsupported_claims": len(result.unsupported_claims),
                         "citation_errors": len(result.citation_errors),
                     },
+                    "execution_path": _append_execution_step(
+                        state,
+                        step="verify_answer",
+                        title="راستی‌آزمایی پاسخ و استنادها",
+                        duration_ms=dur,
+                        status="failed",
+                        details={"passed": False, "unsupported_claims": len(result.unsupported_claims)},
+                    ),
                 }
             return {
                 "verification_passed": True,
@@ -396,6 +578,13 @@ def create_verify_answer_node(
                 "final_response": draft,
                 "verification_result": result.model_dump(mode="json"),
                 "trace_metadata": {**state.get("trace_metadata", {}), "verification": "passed"},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="verify_answer",
+                    title="راستی‌آزمایی پاسخ و استنادها",
+                    duration_ms=dur,
+                    details={"passed": True, "verified_citations": len(verified)},
+                ),
             }
 
         # If raw citations were claimed but NONE matched valid evidence -> verification failure
@@ -404,6 +593,14 @@ def create_verify_answer_node(
                 "verification_passed": False,
                 "verification_feedback": "All cited evidence identifiers were invalid or hallucinated. Please cite only valid Evidence IDs from the provided context.",
                 "trace_metadata": {**state.get("trace_metadata", {}), "verification": "failed_hallucinated_citations"},
+                "execution_path": _append_execution_step(
+                    state,
+                    step="verify_answer",
+                    title="راستی‌آزمایی پاسخ و استنادها",
+                    duration_ms=dur,
+                    status="failed",
+                    details={"passed": False, "reason": "hallucinated_citations"},
+                ),
             }
 
         return {
@@ -411,6 +608,13 @@ def create_verify_answer_node(
             "citations": verified,
             "final_response": draft,
             "trace_metadata": {**state.get("trace_metadata", {}), "verification": "passed"},
+            "execution_path": _append_execution_step(
+                state,
+                step="verify_answer",
+                title="راستی‌آزمایی پاسخ و استنادها",
+                duration_ms=dur,
+                details={"passed": True, "verified_citations": len(verified)},
+            ),
         }
 
     return verify_answer
@@ -420,6 +624,7 @@ def create_repair_draft_node(llm_service: LLMService):
     """Create node repairing draft when verification finds citation or grounding issues."""
 
     async def repair_draft(state: AgentState) -> Dict[str, Any]:
+        t0 = time.perf_counter()
         retry_count = state.get("retry_count", 0) + 1
         query = state.get("normalized_query", state.get("query", ""))
         context_text = state.get("context_text", "")
@@ -448,6 +653,7 @@ def create_repair_draft_node(llm_service: LLMService):
             raw_citations = []
             is_sufficient = True
 
+        dur = int((time.perf_counter() - t0) * 1000)
         return {
             "draft": draft_answer,
             "raw_citations": raw_citations,
@@ -457,6 +663,13 @@ def create_repair_draft_node(llm_service: LLMService):
                 **state.get("trace_metadata", {}),
                 "repair_attempted": retry_count,
             },
+            "execution_path": _append_execution_step(
+                state,
+                step="repair_draft",
+                title="اصلاح و بازبینی پیش‌نویس",
+                duration_ms=dur,
+                details={"retry_count": retry_count},
+            ),
         }
 
     return repair_draft

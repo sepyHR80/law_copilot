@@ -1,5 +1,7 @@
 """LangGraph legal agent assembly and orchestrator."""
 
+import time
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 from langgraph.graph import END, START, StateGraph
@@ -138,6 +140,7 @@ class LegalAgent:
 
     async def run(self, request: AgentRequest) -> AgentResponse:
         """Run the agent state machine on an AgentRequest."""
+        t_start = time.perf_counter()
         initial_state: AgentState = {
             "query": request.query,
             "user_id": request.user_id,
@@ -148,6 +151,20 @@ class LegalAgent:
             "max_retries": request.max_retries,
             "errors": [],
             "trace_metadata": {},
+            "execution_path": [
+                {
+                    "step": "received",
+                    "title": "دریافت پرسش کاربر",
+                    "status": "completed",
+                    "duration_ms": 1,
+                    "details": {
+                        "query_length": len(request.query),
+                        "top_k": request.top_k,
+                        "conversation_id": request.conversation_id,
+                    },
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            ],
         }
 
         config = {}
@@ -155,6 +172,21 @@ class LegalAgent:
             config["configurable"] = {"thread_id": str(request.conversation_id)}
 
         final_state = await self.graph.ainvoke(initial_state, config=config if config else None)
+
+        total_latency_ms = int((time.perf_counter() - t_start) * 1000)
+
+        execution_path = list(final_state.get("execution_path") or [])
+        execution_path.append({
+            "step": "completed",
+            "title": "پایان پردازش و تحویل پاسخ",
+            "status": "completed",
+            "duration_ms": 1,
+            "details": {
+                "total_latency_ms": total_latency_ms,
+                "response_length": len(final_state.get("final_response") or final_state.get("draft") or ""),
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+        })
 
         return AgentResponse(
             query=request.query,
@@ -165,4 +197,5 @@ class LegalAgent:
             is_sufficient=final_state.get("is_sufficient", True),
             retry_count=final_state.get("retry_count", 0),
             trace_metadata=final_state.get("trace_metadata", {}),
+            execution_path=execution_path,
         )
