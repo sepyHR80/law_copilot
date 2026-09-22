@@ -6,10 +6,12 @@ from app.infrastructure.storage.exceptions import (
     ObjectNotFoundError,
     StorageError,
 )
+from app.infrastructure.storage.memory import InMemoryStorage
 from app.infrastructure.storage.minio import MinioStorage
 
 __all__ = [
     "MinioStorage",
+    "InMemoryStorage",
     "StorageBackend",
     "ObjectMetadata",
     "StorageError",

@@ -195,7 +195,7 @@ class TestPipelineProcessingSSE:
         ).encode("utf-8")
 
         with patch("app.core.config.get_settings") as mock_settings, \
-             patch("app.infrastructure.embeddings.openai_provider.OpenAIEmbeddingProvider") as mock_provider_cls:
+             patch("app.api.routes.pipeline.OpenAIEmbeddingProvider") as mock_provider_cls:
 
             mock_s = mock_settings.return_value
             mock_s.embedding_api_key = "valid-active-key"

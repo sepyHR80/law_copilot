@@ -298,115 +298,148 @@ async def process_document_pipeline(
             parent_chunks = [c for c in chunks if c.chunk_type == "parent"]
             child_chunks = [c for c in chunks if c.chunk_type == "child"]
 
-            # Save chunks to DB if DB is active and version record exists
+            # Save chunks to DB first so they are never lost
             embeddings_map = {}
             saved_chunks_count = 0
             total_to_embed = len(chunks)
 
             if db and doc_version_record:
                 try:
-                    if settings.embedding_api_key and settings.embedding_api_key != "test-key" and total_to_embed > 0:
-                        try:
-                            yield sse_event(
-                                "progress",
-                                {
-                                    "stage": "embedding",
-                                    "status": "started",
-                                    "progress": 82,
-                                    "total_to_embed": total_to_embed,
-                                    "embedded_so_far": 0,
-                                    "percentage": 0.0,
-                                    "message": f"آماده‌سازی برای تولید بردار معنایی (Embedding) با هوش مصنوعی برای مجموعاً {total_to_embed} قطعه...",
-                                },
-                            )
-                            await asyncio.sleep(0.05)
-
-                            embed_provider = OpenAIEmbeddingProvider(
-                                endpoint=settings.embedding_endpoint,
-                                api_key=settings.embedding_api_key,
-                                model=settings.embedding_model,
-                                expected_dimension=settings.embedding_dimension,
-                                batch_size=settings.embedding_batch_size,
-                            )
-
-                            batch_size = max(1, min(settings.embedding_batch_size, 10))
-                            for batch_start in range(0, total_to_embed, batch_size):
-                                batch_chunks = chunks[batch_start:batch_start + batch_size]
-                                chunk_texts = [chk.content for chk in batch_chunks]
-                                batch_embeddings = await embed_provider.embed_texts(chunk_texts)
-                                for chk, emb in zip(batch_chunks, batch_embeddings):
-                                    embeddings_map[chk.id] = emb
-
-                                embedded_so_far = len(embeddings_map)
-                                pct = round((embedded_so_far / total_to_embed) * 100, 1)
-                                progress_val = 82 + int((embedded_so_far / total_to_embed) * 12)
-
-                                yield sse_event(
-                                    "progress",
-                                    {
-                                        "stage": "embedding",
-                                        "status": "in_progress",
-                                        "progress": progress_val,
-                                        "total_to_embed": total_to_embed,
-                                        "embedded_so_far": embedded_so_far,
-                                        "percentage": pct,
-                                        "message": f"تولید بردار معنایی: {embedded_so_far} از {total_to_embed} قطعه بردارسازی شد ({pct}٪)...",
-                                    },
-                                )
-                                await asyncio.sleep(0.02)
-
-                            logger.info("Successfully generated embeddings for %d chunks", len(embeddings_map))
-                            final_pct = round((len(embeddings_map) / total_to_embed) * 100, 1)
-
-                            yield sse_event(
-                                "progress",
-                                {
-                                    "stage": "embedding",
-                                    "status": "completed",
-                                    "progress": 94,
-                                    "total_to_embed": total_to_embed,
-                                    "embedded_so_far": len(embeddings_map),
-                                    "percentage": final_pct,
-                                    "message": f"بردارهای معنایی با موفقیت تولید و در پایگاه داده ایندکس شدند ({len(embeddings_map)} از {total_to_embed} قطعه - {final_pct}٪).",
-                                    "embedded_count": len(embeddings_map),
-                                },
-                            )
-                            await asyncio.sleep(0.05)
-                        except Exception as emb_err:
-                            logger.warning("Embedding generation during ingestion failed or skipped: %s", emb_err)
-                            err_pct = round((len(embeddings_map) / total_to_embed) * 100, 1) if total_to_embed > 0 else 0.0
-                            yield sse_event(
-                                "progress",
-                                {
-                                    "stage": "embedding",
-                                    "status": "warning",
-                                    "progress": 94,
-                                    "total_to_embed": total_to_embed,
-                                    "embedded_so_far": len(embeddings_map),
-                                    "percentage": err_pct,
-                                    "message": f"تولید بردار معنایی با خطا مواجه شد ({len(embeddings_map)} از {total_to_embed} قطعه - {err_pct}٪): {emb_err}",
-                                    "error": str(emb_err),
-                                },
-                            )
-
-                    for chk in chunks:
+                    # 1. Insert parent chunks first to satisfy foreign key constraints
+                    valid_parent_ids = set()
+                    for chk in parent_chunks:
+                        sec_str = chk.section[:500] if chk.section else None
                         db_chunk = DocumentChunk(
                             id=chk.id,
                             document_version_id=doc_version_record.id,
-                            parent_chunk_id=chk.parent_chunk_id,
+                            parent_chunk_id=None,
                             content=chk.content,
                             page=chk.page,
-                            section=chk.section,
+                            section=sec_str,
                             chunk_index=chk.chunk_index,
                             chunk_metadata=chk.metadata,
-                            embedding=embeddings_map.get(chk.id),
+                            embedding=None,
+                        )
+                        db.add(db_chunk)
+                        valid_parent_ids.add(chk.id)
+                    db.commit()
+
+                    # 2. Insert child chunks with verified parent_chunk_id
+                    for chk in child_chunks:
+                        sec_str = chk.section[:500] if chk.section else None
+                        p_id = chk.parent_chunk_id if chk.parent_chunk_id in valid_parent_ids else None
+                        db_chunk = DocumentChunk(
+                            id=chk.id,
+                            document_version_id=doc_version_record.id,
+                            parent_chunk_id=p_id,
+                            content=chk.content,
+                            page=chk.page,
+                            section=sec_str,
+                            chunk_index=chk.chunk_index,
+                            chunk_metadata=chk.metadata,
+                            embedding=None,
                         )
                         db.add(db_chunk)
                     db.commit()
                     saved_chunks_count = len(chunks)
+                    logger.info("Successfully persisted %d chunks to database", saved_chunks_count)
                 except Exception as chunk_db_err:
                     logger.warning("Could not persist chunks to DB: %s", chunk_db_err)
                     db.rollback()
+
+            # 3. Generate embeddings in batches and commit incrementally
+            if settings.embedding_api_key and settings.embedding_api_key != "test-key" and total_to_embed > 0:
+                try:
+                    yield sse_event(
+                        "progress",
+                        {
+                            "stage": "embedding",
+                            "status": "started",
+                            "progress": 82,
+                            "total_to_embed": total_to_embed,
+                            "embedded_so_far": 0,
+                            "percentage": 0.0,
+                            "message": f"آماده‌سازی برای تولید بردار معنایی (Embedding) با هوش مصنوعی برای مجموعاً {total_to_embed} قطعه...",
+                        },
+                    )
+                    await asyncio.sleep(0.05)
+
+                    embed_provider = OpenAIEmbeddingProvider(
+                        endpoint=settings.embedding_endpoint,
+                        api_key=settings.embedding_api_key,
+                        model=settings.embedding_model,
+                        expected_dimension=settings.embedding_dimension,
+                        batch_size=settings.embedding_batch_size,
+                    )
+
+                    # Batch size 40 avoids 429 quota limits on Google AI Studio free tier
+                    batch_size = max(1, min(settings.embedding_batch_size, 40))
+                    for batch_start in range(0, total_to_embed, batch_size):
+                        batch_chunks = chunks[batch_start:batch_start + batch_size]
+                        chunk_texts = [chk.content for chk in batch_chunks]
+                        batch_embeddings = await embed_provider.embed_texts(chunk_texts)
+
+                        for chk, emb in zip(batch_chunks, batch_embeddings):
+                            embeddings_map[chk.id] = emb
+
+                        if db and saved_chunks_count > 0:
+                            for chk, emb in zip(batch_chunks, batch_embeddings):
+                                db.query(DocumentChunk).filter(DocumentChunk.id == chk.id).update(
+                                    {"embedding": emb}
+                                )
+                            db.commit()
+
+                        embedded_so_far = len(embeddings_map)
+                        pct = round((embedded_so_far / total_to_embed) * 100, 1)
+                        progress_val = 82 + int((embedded_so_far / total_to_embed) * 12)
+
+                        yield sse_event(
+                            "progress",
+                            {
+                                "stage": "embedding",
+                                "status": "in_progress",
+                                "progress": progress_val,
+                                "total_to_embed": total_to_embed,
+                                "embedded_so_far": embedded_so_far,
+                                "percentage": pct,
+                                "message": f"تولید بردار معنایی: {embedded_so_far} از {total_to_embed} قطعه بردارسازی شد ({pct}٪)...",
+                            },
+                        )
+                        await asyncio.sleep(0.2)
+
+                    logger.info("Successfully generated embeddings for %d chunks", len(embeddings_map))
+                    final_pct = round((len(embeddings_map) / total_to_embed) * 100, 1)
+
+                    yield sse_event(
+                        "progress",
+                        {
+                            "stage": "embedding",
+                            "status": "completed",
+                            "progress": 94,
+                            "total_to_embed": total_to_embed,
+                            "embedded_so_far": len(embeddings_map),
+                            "percentage": final_pct,
+                            "message": f"بردارهای معنایی با موفقیت تولید و در پایگاه داده ایندکس شدند ({len(embeddings_map)} از {total_to_embed} قطعه - {final_pct}٪).",
+                            "embedded_count": len(embeddings_map),
+                        },
+                    )
+                    await asyncio.sleep(0.05)
+                except Exception as emb_err:
+                    logger.warning("Embedding generation during ingestion failed or skipped: %s", emb_err)
+                    err_pct = round((len(embeddings_map) / total_to_embed) * 100, 1) if total_to_embed > 0 else 0.0
+                    yield sse_event(
+                        "progress",
+                        {
+                            "stage": "embedding",
+                            "status": "warning",
+                            "progress": 94,
+                            "total_to_embed": total_to_embed,
+                            "embedded_so_far": len(embeddings_map),
+                            "percentage": err_pct,
+                            "message": f"تولید بردار معنایی با خطا مواجه شد ({len(embeddings_map)} از {total_to_embed} قطعه ذخیره شد - {err_pct}٪): {emb_err}",
+                            "error": str(emb_err),
+                        },
+                    )
 
             # Format sample chunks for display
             sample_chunks_data = []

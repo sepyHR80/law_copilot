@@ -1,5 +1,6 @@
 """Document upload API routes."""
 
+from typing import Optional
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
@@ -15,7 +16,7 @@ from app.domain.documents.schemas import DocumentUploadResponse
 from app.domain.documents.service import DocumentService
 from app.infrastructure.db.repositories.document import SQLAlchemyDocumentRepository
 from app.infrastructure.db.session import SessionLocal
-from app.infrastructure.storage import MinioStorage
+from app.infrastructure.storage import InMemoryStorage, MinioStorage, StorageBackend
 
 router = APIRouter(prefix="/api/v1/documents", tags=["documents"])
 
@@ -29,11 +30,20 @@ def get_db() -> Session:
         db.close()
 
 
-def get_storage() -> MinioStorage:
-    """Dependency to get storage service."""
-    storage = MinioStorage()
-    storage.initialize()
-    return storage
+_fallback_storage: Optional[InMemoryStorage] = None
+
+
+def get_storage() -> StorageBackend:
+    """Dependency to get storage service, falling back to InMemoryStorage when MinIO is unavailable."""
+    global _fallback_storage
+    try:
+        storage = MinioStorage()
+        storage.initialize()
+        return storage
+    except Exception:
+        if _fallback_storage is None:
+            _fallback_storage = InMemoryStorage()
+        return _fallback_storage
 
 
 @router.post("", response_model=DocumentUploadResponse, status_code=201)
@@ -45,7 +55,7 @@ async def upload_document(
     source: str = Form(...),
     version: str = Form("1.0"),
     db: Session = Depends(get_db),
-    storage: MinioStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ) -> DocumentUploadResponse:
     """Upload a new legal document.
 
@@ -88,7 +98,7 @@ async def upload_document(
 async def delete_document(
     document_id: str,
     db: Session = Depends(get_db),
-    storage: MinioStorage = Depends(get_storage),
+    storage: StorageBackend = Depends(get_storage),
 ):
     """Delete a document, its versions, chunks, and stored files."""
     from uuid import UUID
